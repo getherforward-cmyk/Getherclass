@@ -83,6 +83,20 @@ button{white-space:nowrap}
 .mem.due .st,.mem.late .st{box-shadow:0 0 12px var(--red)}
 .mem.late{animation:glow 1.8s ease-in-out infinite}
 @media(prefers-reduced-motion:reduce){.cd.gold,.mem.late{animation:none}}
+
+.hw{align-items:center}
+.hw .ck{width:36px;height:36px;border-radius:50%;padding:0;border:3px solid var(--c);background:transparent;color:#fff;font-size:1.2rem;font-weight:700;flex:none;box-shadow:none}
+.hw .ck.on{background:var(--green);border-color:var(--green);box-shadow:0 0 12px var(--green)}
+.hw .side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.fin{--c:var(--green)}
+.hw.fin{opacity:.7;box-shadow:0 0 8px #2fd27f55;animation:none}
+.hw.fin h3{text-decoration:line-through;text-decoration-color:var(--green)}
+.hw.fin .tag{background:var(--green);color:#fff}
+.hw.pin{outline:2px solid #ffc933;outline-offset:3px;background:linear-gradient(135deg,color-mix(in srgb,#ffc933 16%,var(--card)),var(--card))}
+.pinb{display:inline-block;background:linear-gradient(135deg,#ffd75e,#f5b300);color:#2a1d00;border-radius:99px;padding:0 10px;font-size:.78rem;font-weight:700;box-shadow:0 0 10px #ffc933;margin-right:6px;vertical-align:middle}
+.prog{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
+.prog>div{height:100%;background:linear-gradient(90deg,var(--green),#7af0b0);border-radius:99px;transition:width .4s}
+@media(max-width:560px){.hw{flex-wrap:wrap}.hw .grow{flex:1 1 calc(100% - 60px)}.hw .side{flex-direction:row;align-items:center;justify-content:space-between;width:100%}}
 </style>
 </head>
 <body>
@@ -156,7 +170,7 @@ function status(due){
   if(d<=7) return {k:"green",t:"อีก "+d+" วัน",o:3};
   return {k:"blue",t:"อีก "+d+" วัน",o:4};
 }
-const FILTERS=[["all","ทั้งหมด"],["blue","🔵 >7 วัน"],["green","🟢 ใน 7 วัน"],["y","🟡 ใน 3 วัน"],["o","🟠 วันนี้"],["red","🔴 หมดเขต"]];
+const FILTERS=[["all","ทั้งหมด"],["pin","📌 ปักหมุด"],["done","✅ เสร็จแล้ว"],["blue","🔵 >7 วัน"],["green","🟢 ใน 7 วัน"],["y","🟡 ใน 3 วัน"],["o","🟠 วันนี้"],["red","🔴 หมดเขต"]];
 
 /* ---------- header ---------- */
 function renderWho(){
@@ -227,17 +241,27 @@ function checkReminder(force){
 /* ---------- homework ---------- */
 const driveId=u=>(u.match(/\/d\/([\w-]+)/)||u.match(/[?&]id=([\w-]+)/)||[])[1];
 const links=h=>String(h.link||"").split(/\s+/).filter(u=>/^https:\/\/(drive|docs)\.google\.com\//.test(u));
+const dk=()=>"gc_done_"+(S.student?.sid||"guest");
+const doneList=()=>{try{return JSON.parse(localStorage.getItem(dk())||"[]")}catch(e){return []}};
+const isDone=id=>doneList().includes(id);
+const setDone=(id,v)=>{const a=doneList().filter(x=>x!==id);if(v)a.push(id);try{localStorage.setItem(dk(),JSON.stringify(a))}catch(e){}};
 function viewHW(){
-  const q=S.q.toLowerCase();
-  let list=S.hw.map(h=>({...h,st:status(h.due)})).filter(h=>S.f==="all"||h.st.k===S.f)
+  const q=S.q.toLowerCase(),dn=new Set(doneList());
+  const all=S.hw.map(h=>({...h,st:status(h.due),done:dn.has(h.id)}));
+  const list=all.filter(h=>S.f==="all"||(S.f==="pin"?h.pinned:S.f==="done"?h.done:(!h.done&&h.st.k===S.f)))
    .filter(h=>!q||[h.subject,h.title,h.teacher,h.assigned,h.due,h.detail].some(v=>String(v||"").toLowerCase().includes(q)));
-  list.sort((a,b)=>a.st.o-b.st.o||(a.due||"").localeCompare(b.due||""));
+  list.sort((a,b)=>{if(a.done!==b.done) return a.done?1:-1;if(!a.done&&!!a.pinned!==!!b.pinned) return a.pinned?-1:1;return a.st.o-b.st.o||(a.due||"").localeCompare(b.due||"")});
+  const nd=all.filter(h=>h.done).length,pc=all.length?Math.round(nd/all.length*100):0;
   let h=`<div class="row" style="justify-content:space-between"><h2>📚 การบ้าน</h2>${isEd()?'<button class="pri" id="h-new">➕ เพิ่มการบ้าน</button>':""}</div>
   <div class="card"><div class="row"><input class="grow" id="q" placeholder="🔍 ค้นหา วิชา / เรื่อง / ครู / วันที่ (2026-10-21)" value="${esc(S.q)}"></div>
-  <div class="row" style="margin-top:8px">${FILTERS.map(([k,l])=>`<button class="chip ${S.f===k?"on":""}" data-f="${k}">${l}</button>`).join("")}</div></div>`;
-  h+=list.length?list.map(x=>`<div class="card hw ${x.st.k}" data-hw="${x.id}" tabindex="0" role="button"><div class="grow"><h3>${esc(x.subject)} – ${esc(x.title)}</h3>
+  <div class="row" style="margin-top:8px">${FILTERS.map(([k,l])=>`<button class="chip ${S.f===k?"on":""}" data-f="${k}">${l}</button>`).join("")}</div>
+  ${all.length?`<div class="meta" style="margin-top:10px">ทำเสร็จแล้ว <b>${nd}/${all.length}</b> ชิ้น${S.student?"":" (บันทึกในเครื่องนี้ — เข้าด้วยเลขประจำตัวเพื่อแยกของแต่ละคน)"}</div><div class="prog"><div style="width:${pc}%"></div></div>`:""}</div>`;
+  h+=list.length?list.map(x=>`<div class="card hw ${x.done?"fin":x.st.k} ${x.pinned&&!x.done?"pin":""}" data-hw="${x.id}" tabindex="0" role="button">
+   <button class="ck ${x.done?"on":""}" data-ck="${x.id}" aria-pressed="${x.done}" aria-label="ทำเสร็จแล้ว">${x.done?"✓":""}</button>
+   <div class="grow"><h3>${x.pinned?'<span class="pinb">📌 สำคัญ</span>':""}${esc(x.subject)} – ${esc(x.title)}</h3>
    <div class="meta">👩‍🏫 ${esc(x.teacher||"-")} · สั่ง ${fmt(x.assigned)} · ส่ง <b>${fmt(x.due)}</b>${links(x).length?` · 📎 ${links(x).length} ไฟล์`:""}</div>
-   <div class="meta">แตะเพื่อดูรายละเอียด</div></div><div><span class="tag">${x.st.t}</span></div></div>`).join("")
+   <div class="meta">แตะเพื่อดูรายละเอียด</div></div>
+   <div class="side"><span class="tag">${x.done?"✅ เสร็จแล้ว":x.st.t}</span>${isEd()?`<button class="sm" data-pin="${x.id}">${x.pinned?"📍 เลิกปักหมุด":"📌 ปักหมุด"}</button>`:""}</div></div>`).join("")
    :`<div class="card meta">ยังไม่มีการบ้านที่ตรงกับการค้นหา 🎉</div>`;
   return h;
 }
@@ -257,15 +281,17 @@ function hwForm(h){
     closeModal();toast("บันทึกแล้ว ✅")});
 }
 function hwModal(id){
-  const h=S.hw.find(x=>x.id===id);if(!h) return;const st=status(h.due);
+  const h=S.hw.find(x=>x.id===id);if(!h) return;const st=status(h.due),dn=isDone(h.id);
   modal(`<div class="det"><div class="${st.k}"><span class="chip" style="background:var(--c);color:${["y","o"].includes(st.k)?"#1b2a4a":"#fff"};box-shadow:0 0 12px var(--c);border:0;font-weight:700">${st.t}</span></div>
    <h3>${esc(h.subject)} – ${esc(h.title)}</h3>
    <p class="meta">👩‍🏫 ${esc(h.teacher||"-")}<br>📆 สั่ง ${fmt(h.assigned)} · ส่ง <b>${fmt(h.due)}</b></p>
    ${h.detail?`<p>${esc(h.detail).replace(/\n/g,"<br>")}</p>`:'<p class="meta">ไม่มีรายละเอียดเพิ่มเติม</p>'}
    ${links(h).map((u,i)=>{const d=driveId(u);return `<div class="card">${d?`<img src="https://drive.google.com/thumbnail?id=${d}&sz=w1000" alt="ไฟล์ ${i+1}" loading="lazy" onerror="this.remove()" style="max-width:100%;border-radius:12px;display:block;margin-bottom:8px">`:""}
     <div class="row"><a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">🔗 เปิดใน Drive</a>${d?`<a class="btn sm pri" href="https://drive.google.com/uc?export=download&id=${d}" target="_blank" rel="noopener">⬇️ ดาวน์โหลด</a>`:""}</div></div>`}).join("")}
-   <div class="row" style="justify-content:center;margin-top:12px">${isEd()?'<button id="h-edit">✏️ แก้ไข</button><button class="dng" id="h-del">🗑️ ลบ</button>':""}<button class="pri" id="cl">ปิด</button></div></div>`);
+   <div class="row" style="justify-content:center;margin-top:12px"><button class="${dn?"":"pri"}" id="h-done">${dn?"↩️ ยังไม่เสร็จ":"✅ ทำเสร็จแล้ว"}</button>${isEd()?`<button id="h-pin">${h.pinned?"📍 เลิกปักหมุด":"📌 ปักหมุด"}</button><button id="h-edit">✏️ แก้ไข</button><button class="dng" id="h-del">🗑️ ลบ</button>`:""}<button id="cl">ปิด</button></div></div>`);
   $("#cl").onclick=closeModal;
+  $("#h-done").onclick=()=>{setDone(h.id,!isDone(h.id));render();hwModal(h.id)};
+  $("#h-pin")?.addEventListener("click",guard(async()=>{await setDoc(doc(db,"homework",h.id),{pinned:!h.pinned},{merge:true});closeModal()}));
   $("#h-edit")?.addEventListener("click",()=>hwForm(h));
   $("#h-del")?.addEventListener("click",guard(async()=>{if(confirm("ลบการบ้านนี้?")){await deleteDoc(doc(db,"homework",h.id));closeModal()}}));
 }
@@ -274,6 +300,8 @@ function bindHW(){
   document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.f=b.dataset.f;render()});
   document.querySelectorAll("[data-hw]").forEach(c=>{c.onclick=()=>hwModal(c.dataset.hw);c.onkeydown=e=>{if(e.key==="Enter")hwModal(c.dataset.hw)}});
   $("#h-new")?.addEventListener("click",()=>hwForm(null));
+  document.querySelectorAll("[data-ck]").forEach(b=>{b.onclick=e=>{e.stopPropagation();setDone(b.dataset.ck,!isDone(b.dataset.ck));render()};b.onkeydown=e=>e.stopPropagation()});
+  document.querySelectorAll("[data-pin]").forEach(b=>{const hid=b.dataset.pin;b.onclick=guard(async e=>{e.stopPropagation();const x=S.hw.find(y=>y.id===hid);await setDoc(doc(db,"homework",hid),{pinned:!x.pinned},{merge:true})});b.onkeydown=e=>e.stopPropagation()});
 }
 
 /* ---------- money ---------- */
@@ -326,9 +354,9 @@ function viewLedger(){
 }
 function viewAdmin(){
   return `<div class="card"><h3>👥 เพิ่มสมาชิก</h3><div class="row"><input id="s-id" placeholder="เลขประจำตัว"><input id="s-n" placeholder="ชื่อเล่น"><input id="s-f" class="grow" placeholder="ชื่อจริง-นามสกุล"><button class="pri" id="s-add">เพิ่ม</button></div>
-   <p class="meta">เพิ่มหลายคนพร้อมกัน (1 บรรทัดต่อ 1 คน: เลขประจำตัว,ชื่อเล่น,ชื่อจริง)</p><textarea id="s-bulk"></textarea><button id="s-bulkgo">เพิ่มทั้งหมด</button></div>
+   <p class="meta">เพิ่มหลายคนพร้อมกัน 1 บรรทัดต่อ 1 คน เรียงเป็น รหัส, ชื่อเล่น, ชื่อจริง (คั่นด้วยคอมมาหรือเว้นวรรคก็ได้ คำแรกหลังรหัส = ชื่อเล่น ที่เหลือ = ชื่อจริง)</p><textarea id="s-bulk" placeholder="38888,นน,นายแก้ว สมใจ&#10;38651 ซูกัส นายกันต์พัว มะลิทอง"></textarea><button id="s-bulkgo">เพิ่มทั้งหมด</button></div>
   <div class="card"><h3>📅 สร้างรอบเก็บเงิน (รายสัปดาห์)</h3><div class="grid"><label>ชื่อรอบ<input id="r-n" placeholder="เช่น สัปดาห์ที่ 1"></label><label>บาท/คน<input id="r-a" type="number" min="0"></label><label>วันเริ่มชำระ<input id="r-s" type="date"></label><label>วันหมดเขตชำระ<input id="r-d" type="date"></label></div><p><button class="pri" id="r-add">สร้างรอบ</button></p></div>
-  <div class="card"><h3>รายชื่อ / รอบ</h3>${S.students.map(s=>`<span class="chip">${esc(s.sid)} ${esc(s.nick)} <a href="#" data-sdel="${s.id}">✕</a></span> `).join("")}<hr>
+  <div class="card"><h3>รายชื่อ / รอบ</h3>${S.students.map(s=>`<span class="chip"><a href="#" data-sedit="${s.id}">✏️ ${esc(s.sid)} ${esc(s.nick)}</a> <a href="#" data-sdel="${s.id}">✕</a></span> `).join("")}<hr>
   ${S.rounds.map(r=>`<div>${esc(r.title)} · ${baht(r.amount)} · ${fmt(rs(r))} – ${fmt(r.due)} <button class="sm dng" data-rdel="${r.id}">ลบ</button></div>`).join("")}</div>`;
 }
 const setPay=(rid,sid,st)=>setDoc(doc(db,"payments",rid+"_"+sid),{round:rid,sid,status:st,at:serverTimestamp()});
@@ -349,7 +377,8 @@ function bindMO(){
   on("[data-ldel]","click",guard(e=>confirm("ลบรายการนี้?")&&deleteDoc(doc(db,"ledger",e.target.dataset.ldel))));
   const addS=(sid,nick,name)=>setDoc(doc(db,"students",sid),{sid,nick,name});
   on("#s-add","click",guard(async()=>{const i=$("#s-id").value.trim();if(!i) return toast("ใส่เลขประจำตัว");await addS(i,$("#s-n").value.trim(),$("#s-f").value.trim());["s-id","s-n","s-f"].forEach(x=>$("#"+x).value="")}));
-  on("#s-bulkgo","click",guard(async()=>{for(const l of $("#s-bulk").value.split("\n")){const [i,n,...f]=l.split(",").map(x=>x.trim());if(i) await addS(i,n||"",f.join(" "))}toast("เพิ่มสมาชิกแล้ว")}));
+  on("#s-bulkgo","click",guard(async()=>{for(const l of $("#s-bulk").value.split("\n")){const p=parseStu(l);if(p&&p.sid) await addS(p.sid,p.nick,p.name)}$("#s-bulk").value="";toast("เพิ่มสมาชิกแล้ว")}));
+  on("[data-sedit]","click",e=>{e.preventDefault();studentEdit(e.currentTarget.dataset.sedit)});
   on("[data-sdel]","click",guard(e=>{e.preventDefault();return confirm("ลบสมาชิกคนนี้?")&&deleteDoc(doc(db,"students",e.target.dataset.sdel))}));
   on("#r-add","click",guard(async()=>{const n=$("#r-n").value.trim(),a=Number($("#r-a").value),d=$("#r-d").value,b=$("#r-s").value||d;if(!n||!a||!d) return toast("กรอกชื่อรอบ จำนวนเงิน และวันหมดเขต");
     if(b>d) return toast("วันเริ่มต้องไม่หลังวันหมดเขต");
@@ -401,6 +430,23 @@ function bindCA(){
   $("#e-add")?.addEventListener("click",guard(async()=>{const n=$("#e-n").value.trim(),a=$("#e-s").value,b=$("#e-e").value||a;
     if(!n||!a) return toast("กรอกชื่อและวันเริ่ม");if(b<a) return toast("วันสิ้นสุดต้องไม่ก่อนวันเริ่ม");
     await addDoc(collection(db,"events"),{type:$("#e-t").value,title:n,start:a,end:b,detail:$("#e-d").value.trim()});toast("บันทึกแล้ว ✅")}));
+}
+
+function parseStu(l){
+  l=l.trim().replace(/[，\t]/g,",");if(!l) return null;
+  if(l.includes(",")){const [sid,...r]=l.split(",").map(x=>x.trim()),t=r.filter(Boolean);
+    if(t.length>=2) return {sid,nick:t[0],name:t.slice(1).join(" ")};
+    const w=(t[0]||"").split(/\s+/);return {sid,nick:w[0]||"",name:w.slice(1).join(" ")}}
+  const w=l.split(/\s+/);return {sid:w[0],nick:w[1]||"",name:w.slice(2).join(" ")};
+}
+function studentEdit(id){
+  const s=S.students.find(x=>x.id===id);if(!s) return;
+  modal(`<div class="det"><h3>✏️ แก้ไขสมาชิก</h3><p class="meta">รหัส ${esc(s.sid)}</p>
+   <label class="meta" style="display:block">ชื่อเล่น<input id="se-n" style="width:100%" value="${esc(s.nick)}"></label>
+   <label class="meta" style="display:block;margin-top:8px">ชื่อจริง-นามสกุล<input id="se-f" style="width:100%" value="${esc(s.name)}"></label>
+   <div class="row" style="justify-content:center;margin-top:12px"><button class="pri" id="se-ok">บันทึก</button><button id="cl">ยกเลิก</button></div></div>`);
+  $("#cl").onclick=closeModal;
+  $("#se-ok").onclick=guard(async()=>{await setDoc(doc(db,"students",s.id),{sid:s.sid,nick:$("#se-n").value.trim(),name:$("#se-f").value.trim()});closeModal();toast("บันทึกแล้ว ✅")});
 }
 
 /* ---------- render ---------- */
