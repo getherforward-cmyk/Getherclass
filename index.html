@@ -49,6 +49,8 @@ table{width:100%;border-collapse:collapse}th{color:var(--mute);font-weight:600;f
 @keyframes hop{50%{transform:translateY(-12px) rotate(-6deg)}}
 @media(prefers-reduced-motion:reduce){.mascot,.hw.red,.hw.o{animation:none}button:hover{transform:none}}
 .hide{display:none!important}
+button{white-space:nowrap}
+@media(max-width:560px){header{padding:8px 12px}nav{width:100%}nav button{flex:1;padding:6px 4px;font-size:.9rem}.logo{font-size:1.3rem}.brand img{height:38px;width:38px}}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border:2px solid var(--org);padding:8px 18px;border-radius:99px;display:none;z-index:10}
 
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
@@ -96,11 +98,11 @@ const firebaseConfig = {
   appId: "1:114966364605:web:0b827dd5008c18a3fc52d4"
 };
 
-$("#fav").href=$("#logo").src;
 const fb = initializeApp(firebaseConfig), auth = getAuth(fb), db = getFirestore(fb);
 const S = {tab:"hw",ev:[],cm:new Date(), user:null, student:JSON.parse(localStorage.getItem("gc_student")||"null"),
   hw:[], students:[], rounds:[], pays:[], ledger:[], q:"", f:"all", moTab:"status", roundId:"", msearch:""};
 const $ = s => document.querySelector(s);
+$("#fav").href=$("#logo").src;
 const esc = t => String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const isEd = () => !!S.user && S.isAdmin;
 const baht = n => Number(n||0).toLocaleString("th-TH")+" บาท";
