@@ -67,6 +67,22 @@ button{white-space:nowrap}
 .det{text-align:left}.det .card{box-shadow:none;padding:10px}
 @media(max-width:560px){.cd{min-height:58px;padding:3px}.ev{font-size:0;height:6px;width:6px;border-radius:99px;display:inline-block;padding:0;margin:1px;border:0}.off{font-size:.65rem}}
 @media(prefers-reduced-motion:reduce){.off{animation:none}}
+
+#modal>div{max-width:520px;width:100%;max-height:92vh;overflow:auto}
+.hw{cursor:pointer}
+.cd .ev{background:linear-gradient(135deg,#ffd75e,#f5b300);color:#2a1d00;font-weight:700;border:0;border-radius:6px;padding:1px 4px;margin-top:3px;white-space:normal;word-break:break-word;line-height:1.15;font-size:.68rem;height:auto;width:auto;display:block;box-shadow:0 0 8px #ffc933,0 0 16px #ffc93388}
+.cd .ev.h{background:var(--red);color:#fff;box-shadow:0 0 8px var(--red)}
+.cd.gold{border-color:#ffc933;box-shadow:0 0 10px #ffc933aa,inset 0 0 8px #ffc93344;animation:gold 2.4s ease-in-out infinite}
+@keyframes gold{50%{box-shadow:0 0 22px #ffc933,inset 0 0 12px #ffc93366}}
+@media(max-width:560px){.cd{min-height:80px}.cd .ev{font-size:.58rem;padding:1px 3px}}
+.mem{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;border:2px solid var(--line);border-left-width:8px;border-radius:16px;padding:10px 12px;margin-bottom:8px;background:var(--card)}
+.mem .mp{flex:1;min-width:150px}.mem .nm{font-weight:700;font-size:1.05rem}
+.mem .st{font-weight:700;font-size:.85rem;border-radius:99px;padding:2px 12px;background:var(--c);color:#fff;white-space:nowrap}
+.mem.paid{--c:var(--green);border-color:var(--green)}.mem.pending{--c:var(--orange);border-color:var(--orange)}.mem.wait{--c:#7b8bb0}
+.mem.due,.mem.late{--c:var(--red);border-color:var(--red);box-shadow:0 0 14px #ff3b4788,0 0 2px var(--red)}
+.mem.due .st,.mem.late .st{box-shadow:0 0 12px var(--red)}
+.mem.late{animation:glow 1.8s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.cd.gold,.mem.late{animation:none}}
 </style>
 </head>
 <body>
@@ -99,7 +115,7 @@ const firebaseConfig = {
 };
 
 const fb = initializeApp(firebaseConfig), auth = getAuth(fb), db = getFirestore(fb);
-const S = {tab:"hw",ev:[],cm:new Date(), user:null, student:JSON.parse(localStorage.getItem("gc_student")||"null"),
+const S = {tab:"hw",mf:"all",ev:[],cm:new Date(), user:null, student:JSON.parse(localStorage.getItem("gc_student")||"null"),
   hw:[], students:[], rounds:[], pays:[], ledger:[], q:"", f:"all", moTab:"status", roundId:"", msearch:""};
 const $ = s => document.querySelector(s);
 $("#fav").href=$("#logo").src;
@@ -168,13 +184,15 @@ function uploadLogo(f){
 }
 function studentLogin(){
   modal(`<div class="mascot">🐱</div><h3>เข้าสู่ระบบนักเรียน</h3><p class="meta">ใส่เลขประจำตัวนักเรียน</p>
-  <input id="sid" inputmode="numeric" placeholder="เช่น 12345" style="width:100%"><br><br>
+  <input id="sid" inputmode="numeric" autocomplete="off" placeholder="เช่น 12345" style="width:100%"><p id="lg-err" class="bad" style="min-height:1.5em"></p>
   <button class="pri" id="go">เข้าสู่ระบบ</button> <button id="cl">ยกเลิก</button>`);
-  const go=()=>{const id=$("#sid").value.trim();const s=S.students.find(x=>x.sid===id);
-    if(!s) return toast("ไม่พบเลขประจำตัวนี้ ให้ผู้แก้ไขเพิ่มชื่อก่อน");
-    S.student={sid:s.sid,nick:s.nick,name:s.name};localStorage.setItem("gc_student",JSON.stringify(S.student));
+  const go=()=>{const id=$("#sid").value.trim().replace(/[๐-๙]/g,c=>c.charCodeAt(0)-3664).replace(/\s+/g,"");
+    if(!id) return $("#lg-err").textContent="กรอกเลขประจำตัวก่อน";
+    const s=S.students.find(x=>String(x.sid).trim()===id||x.id===id);
+    if(!s) return $("#lg-err").textContent=S.students.length?"ไม่พบเลขประจำตัว "+id+" — ให้ผู้แก้ไขเพิ่มชื่อก่อน":"ยังโหลดรายชื่อไม่ได้ ลองรีเฟรชหน้าเว็บ";
+    S.student={sid:String(s.sid),nick:s.nick,name:s.name};localStorage.setItem("gc_student",JSON.stringify(S.student));
     closeModal();render();checkReminder(true)};
-  $("#go").onclick=go;$("#sid").onkeydown=e=>e.key==="Enter"&&go();$("#cl").onclick=closeModal;$("#sid").focus();
+  $("#go").onclick=go;$("#sid").onkeydown=e=>e.key==="Enter"&&go();$("#cl").onclick=closeModal;setTimeout(()=>$("#sid").focus(),50);
 }
 function modal(h){$("#mbox").innerHTML=h;$("#modal").classList.add("show")}
 function adminModal(){
@@ -193,7 +211,8 @@ function closeModal(){S.admOpen=false;$("#modal").classList.remove("show")}
 
 /* ---------- reminder mascot ---------- */
 let shown=false;
-function owed(sid){return S.rounds.filter(r=>r.due&&new Date(r.due+"T00:00")<=today()&&!S.pays.find(p=>p.id===r.id+"_"+sid&&p.status==="paid"))}
+const rs=r=>r.start||r.due;
+function owed(sid){return S.rounds.filter(r=>rs(r)&&new Date(rs(r)+"T00:00")<=today()&&!S.pays.find(p=>p.id===r.id+"_"+sid&&p.status==="paid"))}
 function checkReminder(force){
   if(!S.student||(shown&&!force)||!S.rounds.length) return;
   const o=owed(S.student.sid);if(!o.length) return;
@@ -206,34 +225,55 @@ function checkReminder(force){
 }
 
 /* ---------- homework ---------- */
+const driveId=u=>(u.match(/\/d\/([\w-]+)/)||u.match(/[?&]id=([\w-]+)/)||[])[1];
+const links=h=>String(h.link||"").split(/\s+/).filter(u=>/^https:\/\/(drive|docs)\.google\.com\//.test(u));
 function viewHW(){
   const q=S.q.toLowerCase();
   let list=S.hw.map(h=>({...h,st:status(h.due)})).filter(h=>S.f==="all"||h.st.k===S.f)
    .filter(h=>!q||[h.subject,h.title,h.teacher,h.assigned,h.due,h.detail].some(v=>String(v||"").toLowerCase().includes(q)));
   list.sort((a,b)=>a.st.o-b.st.o||(a.due||"").localeCompare(b.due||""));
-  let h=`<h2>📚 การบ้าน</h2><div class="card"><div class="row"><input class="grow" id="q" placeholder="🔍 ค้นหา วิชา / เรื่อง / ครู / วันที่ (2026-10-21)" value="${esc(S.q)}"></div>
+  let h=`<div class="row" style="justify-content:space-between"><h2>📚 การบ้าน</h2>${isEd()?'<button class="pri" id="h-new">➕ เพิ่มการบ้าน</button>':""}</div>
+  <div class="card"><div class="row"><input class="grow" id="q" placeholder="🔍 ค้นหา วิชา / เรื่อง / ครู / วันที่ (2026-10-21)" value="${esc(S.q)}"></div>
   <div class="row" style="margin-top:8px">${FILTERS.map(([k,l])=>`<button class="chip ${S.f===k?"on":""}" data-f="${k}">${l}</button>`).join("")}</div></div>`;
-  if(isEd()) h+=`<div class="card"><h3>➕ เพิ่มการบ้าน</h3><div class="grid">
-   <label>วิชา<input id="h-sub"></label><label>ชื่อเรื่อง<input id="h-title"></label><label>ชื่ออาจารย์<input id="h-t"></label>
-   <label>วันที่สั่ง<input type="date" id="h-a" value="${new Date().toISOString().slice(0,10)}"></label><label>วันที่ส่ง<input type="date" id="h-d"></label>
-   <label>ลิงก์ Google Drive (รูป/ไฟล์)<input id="h-l" placeholder="https://drive.google.com/..."></label></div>
-   <label class="meta">รายละเอียด<textarea id="h-det"></textarea></label><br><button class="pri" id="h-add">บันทึกการบ้าน</button></div>`;
-  h+=list.length?list.map(x=>`<div class="card hw ${x.st.k}"><div class="grow"><h3>${esc(x.subject)} – ${esc(x.title)}</h3>
-   <div class="meta">👩‍🏫 ${esc(x.teacher||"-")} · สั่ง ${fmt(x.assigned)} · ส่ง <b>${fmt(x.due)}</b></div>
-   ${x.detail?`<p>${esc(x.detail).replace(/\n/g,"<br>")}</p>`:""}
-   ${/^https:\/\/(drive|docs)\.google\.com\//.test(x.link||"")?`<a class="btn sm" href="${esc(x.link)}" target="_blank" rel="noopener">⬇️ เปิด / ดาวน์โหลดไฟล์</a>`:""}
-   ${isEd()?` <button class="sm dng" data-del="${x.id}">ลบ</button>`:""}</div><div><span class="tag">${x.st.t}</span></div></div>`).join("")
+  h+=list.length?list.map(x=>`<div class="card hw ${x.st.k}" data-hw="${x.id}" tabindex="0" role="button"><div class="grow"><h3>${esc(x.subject)} – ${esc(x.title)}</h3>
+   <div class="meta">👩‍🏫 ${esc(x.teacher||"-")} · สั่ง ${fmt(x.assigned)} · ส่ง <b>${fmt(x.due)}</b>${links(x).length?` · 📎 ${links(x).length} ไฟล์`:""}</div>
+   <div class="meta">แตะเพื่อดูรายละเอียด</div></div><div><span class="tag">${x.st.t}</span></div></div>`).join("")
    :`<div class="card meta">ยังไม่มีการบ้านที่ตรงกับการค้นหา 🎉</div>`;
   return h;
+}
+function hwForm(h){
+  const v=k=>esc(h?.[k]||"");
+  modal(`<div class="det"><h3>${h?"✏️ แก้ไขการบ้าน":"➕ เพิ่มการบ้าน"}</h3><div class="grid">
+   <label>วิชา<input id="h-sub" value="${v("subject")}"></label><label>ชื่อเรื่อง<input id="h-title" value="${v("title")}"></label><label>ชื่ออาจารย์<input id="h-t" value="${v("teacher")}"></label>
+   <label>วันที่สั่ง<input type="date" id="h-a" value="${h?.assigned||iso(new Date())}"></label><label>วันที่ส่ง<input type="date" id="h-d" value="${v("due")}"></label></div>
+   <label class="meta" style="display:block;margin-top:8px">ลิงก์ Google Drive รูป/ไฟล์ (หลายไฟล์: 1 บรรทัดต่อ 1 ลิงก์)<textarea id="h-l" placeholder="https://drive.google.com/file/d/...">${v("link")}</textarea></label>
+   <label class="meta" style="display:block;margin-top:8px">รายละเอียด<textarea id="h-det">${v("detail")}</textarea></label>
+   <div class="row" style="justify-content:center;margin-top:12px"><button class="pri" id="h-save">บันทึก</button><button id="cl">ยกเลิก</button></div></div>`);
+  $("#cl").onclick=closeModal;
+  $("#h-save").onclick=guard(async()=>{const g=i=>$("#"+i).value.trim();
+    if(!g("h-sub")||!g("h-title")||!g("h-d")) return toast("กรอก วิชา เรื่อง และวันที่ส่งก่อน");
+    const d={subject:g("h-sub"),title:g("h-title"),teacher:g("h-t"),assigned:g("h-a"),due:g("h-d"),link:g("h-l"),detail:g("h-det")};
+    if(h) await setDoc(doc(db,"homework",h.id),d,{merge:true}); else await addDoc(collection(db,"homework"),{...d,at:serverTimestamp()});
+    closeModal();toast("บันทึกแล้ว ✅")});
+}
+function hwModal(id){
+  const h=S.hw.find(x=>x.id===id);if(!h) return;const st=status(h.due);
+  modal(`<div class="det"><div class="${st.k}"><span class="chip" style="background:var(--c);color:${["y","o"].includes(st.k)?"#1b2a4a":"#fff"};box-shadow:0 0 12px var(--c);border:0;font-weight:700">${st.t}</span></div>
+   <h3>${esc(h.subject)} – ${esc(h.title)}</h3>
+   <p class="meta">👩‍🏫 ${esc(h.teacher||"-")}<br>📆 สั่ง ${fmt(h.assigned)} · ส่ง <b>${fmt(h.due)}</b></p>
+   ${h.detail?`<p>${esc(h.detail).replace(/\n/g,"<br>")}</p>`:'<p class="meta">ไม่มีรายละเอียดเพิ่มเติม</p>'}
+   ${links(h).map((u,i)=>{const d=driveId(u);return `<div class="card">${d?`<img src="https://drive.google.com/thumbnail?id=${d}&sz=w1000" alt="ไฟล์ ${i+1}" loading="lazy" onerror="this.remove()" style="max-width:100%;border-radius:12px;display:block;margin-bottom:8px">`:""}
+    <div class="row"><a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">🔗 เปิดใน Drive</a>${d?`<a class="btn sm pri" href="https://drive.google.com/uc?export=download&id=${d}" target="_blank" rel="noopener">⬇️ ดาวน์โหลด</a>`:""}</div></div>`}).join("")}
+   <div class="row" style="justify-content:center;margin-top:12px">${isEd()?'<button id="h-edit">✏️ แก้ไข</button><button class="dng" id="h-del">🗑️ ลบ</button>':""}<button class="pri" id="cl">ปิด</button></div></div>`);
+  $("#cl").onclick=closeModal;
+  $("#h-edit")?.addEventListener("click",()=>hwForm(h));
+  $("#h-del")?.addEventListener("click",guard(async()=>{if(confirm("ลบการบ้านนี้?")){await deleteDoc(doc(db,"homework",h.id));closeModal()}}));
 }
 function bindHW(){
   $("#q")?.addEventListener("input",e=>{S.q=e.target.value;render();const i=$("#q");i.focus();i.setSelectionRange(99,99)});
   document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.f=b.dataset.f;render()});
-  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=guard(async()=>{if(confirm("ลบการบ้านนี้?"))await deleteDoc(doc(db,"homework",b.dataset.del))}));
-  $("#h-add")?.addEventListener("click",guard(async()=>{
-    const v=i=>$("#"+i).value.trim();if(!v("h-sub")||!v("h-title")||!v("h-d")) return toast("กรอก วิชา เรื่อง และวันที่ส่งก่อน");
-    await addDoc(collection(db,"homework"),{subject:v("h-sub"),title:v("h-title"),teacher:v("h-t"),assigned:v("h-a"),due:v("h-d"),link:v("h-l"),detail:v("h-det"),at:serverTimestamp()});
-    toast("บันทึกแล้ว ✅")}));
+  document.querySelectorAll("[data-hw]").forEach(c=>{c.onclick=()=>hwModal(c.dataset.hw);c.onkeydown=e=>e.key==="Enter"&&hwModal(c.dataset.hw)});
+  $("#h-new")?.addEventListener("click",()=>hwForm(null));
 }
 
 /* ---------- money ---------- */
@@ -245,23 +285,37 @@ function viewMO(){
   if(S.moTab==="status") h+=viewStatus(); else if(S.moTab==="ledger") h+=viewLedger(); else h+=viewAdmin();
   return h;
 }
+function rstate(r,st){
+  if(st==="paid"||st==="pending") return st;
+  const t=today();
+  if(new Date(rs(r)+"T00:00")>t) return "wait";
+  return r.due&&new Date(r.due+"T00:00")<t?"late":"due";
+}
+function roundInfo(r){
+  const t=today(),d=x=>Math.round((new Date(x+"T00:00")-t)/864e5);
+  if(rs(r)&&d(rs(r))>0) return "🕒 เริ่มชำระอีก "+d(rs(r))+" วัน";
+  if(!r.due) return "";const n=d(r.due);
+  return n<0?"🚨 เกินกำหนด "+(-n)+" วัน":n===0?"🟠 ครบกำหนดวันนี้":"⏰ เหลือเวลา "+n+" วัน";
+}
 function viewStatus(){
   if(!S.rounds.length) return `<div class="card meta">ยังไม่มีรอบเก็บเงิน</div>`;
   if(!S.roundId||!S.rounds.find(r=>r.id===S.roundId)) S.roundId=[...S.rounds].reverse().find(r=>status(r.due).o>0)?.id||S.rounds[S.rounds.length-1].id;
-  const r=S.rounds.find(x=>x.id===S.roundId), ms=S.msearch.toLowerCase();
-  const rows=S.students.filter(s=>!ms||[s.sid,s.nick,s.name].some(v=>String(v||"").toLowerCase().includes(ms)));
-  const paid=S.students.filter(s=>payOf(r.id,s.sid)==="paid"), unpaid=S.students.filter(s=>payOf(r.id,s.sid)!=="paid");
-  const lab={paid:'<span class="ok">✅ จ่ายแล้ว</span>',pending:'<span class="wait">⏳ รออนุมัติ</span>',none:'<span class="bad">❌ ค้างชำระ</span>'};
-  return `<div class="card"><div class="row"><select id="rsel" class="grow">${S.rounds.map(x=>`<option value="${x.id}" ${x.id===r.id?"selected":""}>${esc(x.title)} · ${baht(x.amount)} · ครบ ${fmt(x.due)}</option>`).join("")}</select>
-   <input id="ms" placeholder="🔍 ชื่อเล่น / ชื่อจริง / รหัส" value="${esc(S.msearch)}"></div>
-   <div class="sum" style="margin-top:10px"><div>เก็บได้แล้ว<b class="ok">${baht(paid.length*r.amount)}</b>${paid.length} คน</div><div>ค้างชำระ<b class="bad">${unpaid.length} คน</b>${baht(unpaid.length*r.amount)}</div></div>
+  const r=S.rounds.find(x=>x.id===S.roundId), ms=S.msearch.toLowerCase(), ord={late:0,due:1,pending:2,wait:3,paid:4};
+  const all=S.students.map(s=>({s,k:rstate(r,payOf(r.id,s.sid))}));
+  const paid=all.filter(x=>x.k==="paid"), unpaid=all.filter(x=>x.k==="due"||x.k==="late");
+  const rows=all.filter(x=>(!ms||[x.s.sid,x.s.nick,x.s.name].some(v=>String(v||"").toLowerCase().includes(ms)))&&(S.mf==="all"||(S.mf==="unpaid"&&x.k!=="paid")||(S.mf==="paid"&&x.k==="paid"))).sort((a,b)=>ord[a.k]-ord[b.k]);
+  const lab={paid:"✅ จ่ายแล้ว",pending:"⏳ รออนุมัติ",wait:"🕒 ยังไม่ถึงรอบ",due:"❌ ยังไม่จ่าย",late:"🚨 เกินกำหนด"};
+  return `<div class="card"><select id="rsel" style="width:100%">${S.rounds.map(x=>`<option value="${x.id}" ${x.id===r.id?"selected":""}>${esc(x.title)} · ${baht(x.amount)}</option>`).join("")}</select>
+   <p style="margin:8px 0 0"><b>${esc(r.title)}</b> · ${baht(r.amount)}/คน<br><span class="meta">เริ่มชำระ ${fmt(rs(r))} · หมดเขต <b>${fmt(r.due)}</b></span> <span class="chip">${roundInfo(r)}</span></p>
+   <div class="sum" style="margin-top:10px"><div>เก็บได้แล้ว<b class="ok">${baht(paid.length*r.amount)}</b>${paid.length} คน</div><div>ยังไม่จ่าย<b class="bad">${unpaid.length} คน</b>${baht(unpaid.length*r.amount)}</div></div>
    ${isEd()?`<p><button class="sm pri" id="r-inc">เพิ่มยอดที่เก็บได้เป็นรายรับ</button></p>`:""}</div>
-  <div class="card" style="overflow-x:auto"><table><tr><th>รหัส</th><th>ชื่อเล่น</th><th>ชื่อจริง</th><th>สถานะ</th><th></th></tr>
-  ${rows.map(s=>{const st=payOf(r.id,s.sid),me=S.student?.sid===s.sid;
-   return `<tr><td>${esc(s.sid)}</td><td>${esc(s.nick)}</td><td>${esc(s.name)}</td><td>${lab[st]}</td><td>
-   ${me&&st==="none"?`<button class="sm pri" data-claim="${s.sid}">ฉันจ่ายแล้ว</button>`:""}
-   ${isEd()&&st!=="paid"?`<button class="sm" data-ok="${s.sid}">${st==="pending"?"อนุมัติ":"รับเงินเลย"}</button>`:""}
-   ${isEd()&&st!=="none"?`<button class="sm dng" data-undo="${s.sid}">ยกเลิก</button>`:""}</td></tr>`}).join("")||`<tr><td colspan="5" class="meta">ไม่พบสมาชิก</td></tr>`}</table></div>`;
+  <div class="card"><div class="row"><input id="ms" class="grow" placeholder="🔍 ชื่อเล่น / ชื่อจริง / รหัส" value="${esc(S.msearch)}"></div>
+   <div class="row" style="margin-top:8px">${[["all","ทั้งหมด"],["unpaid","ยังไม่จ่าย"],["paid","จ่ายแล้ว"]].map(([k,l])=>`<button class="chip ${S.mf===k?"on":""}" data-mf="${k}">${l}</button>`).join("")}</div></div>
+  ${rows.map(({s,k})=>{const me=S.student?.sid===String(s.sid);
+   return `<div class="mem ${k}"><div class="mp"><div class="nm">${esc(s.nick||s.name)}${me?" (คุณ)":""}</div><div class="meta">${esc(s.name)} · รหัส ${esc(s.sid)}</div></div><span class="st">${lab[k]}</span>
+   ${me&&k!=="paid"&&k!=="pending"?`<button class="sm pri" data-claim="${s.sid}">ฉันจ่ายแล้ว</button>`:""}
+   ${isEd()&&k!=="paid"?`<button class="sm" data-ok="${s.sid}">${k==="pending"?"อนุมัติ":"รับเงินเลย"}</button>`:""}
+   ${isEd()&&(k==="paid"||k==="pending")?`<button class="sm dng" data-undo="${s.sid}">ยกเลิก</button>`:""}</div>`}).join("")||`<div class="card meta">ไม่พบสมาชิก</div>`}`;
 }
 function viewLedger(){
   let h="";
@@ -273,14 +327,15 @@ function viewLedger(){
 function viewAdmin(){
   return `<div class="card"><h3>👥 เพิ่มสมาชิก</h3><div class="row"><input id="s-id" placeholder="เลขประจำตัว"><input id="s-n" placeholder="ชื่อเล่น"><input id="s-f" class="grow" placeholder="ชื่อจริง-นามสกุล"><button class="pri" id="s-add">เพิ่ม</button></div>
    <p class="meta">เพิ่มหลายคนพร้อมกัน (1 บรรทัดต่อ 1 คน: เลขประจำตัว,ชื่อเล่น,ชื่อจริง)</p><textarea id="s-bulk"></textarea><button id="s-bulkgo">เพิ่มทั้งหมด</button></div>
-  <div class="card"><h3>📅 สร้างรอบเก็บเงิน (รายสัปดาห์)</h3><div class="row"><input id="r-n" class="grow" placeholder="เช่น สัปดาห์ที่ 1"><input id="r-a" type="number" min="0" placeholder="บาท/คน" style="width:110px"><input id="r-d" type="date"><button class="pri" id="r-add">สร้างรอบ</button></div></div>
+  <div class="card"><h3>📅 สร้างรอบเก็บเงิน (รายสัปดาห์)</h3><div class="grid"><label>ชื่อรอบ<input id="r-n" placeholder="เช่น สัปดาห์ที่ 1"></label><label>บาท/คน<input id="r-a" type="number" min="0"></label><label>วันเริ่มชำระ<input id="r-s" type="date"></label><label>วันหมดเขตชำระ<input id="r-d" type="date"></label></div><p><button class="pri" id="r-add">สร้างรอบ</button></p></div>
   <div class="card"><h3>รายชื่อ / รอบ</h3>${S.students.map(s=>`<span class="chip">${esc(s.sid)} ${esc(s.nick)} <a href="#" data-sdel="${s.id}">✕</a></span> `).join("")}<hr>
-  ${S.rounds.map(r=>`<div>${esc(r.title)} · ${baht(r.amount)} · ${fmt(r.due)} <button class="sm dng" data-rdel="${r.id}">ลบ</button></div>`).join("")}</div>`;
+  ${S.rounds.map(r=>`<div>${esc(r.title)} · ${baht(r.amount)} · ${fmt(rs(r))} – ${fmt(r.due)} <button class="sm dng" data-rdel="${r.id}">ลบ</button></div>`).join("")}</div>`;
 }
 const setPay=(rid,sid,st)=>setDoc(doc(db,"payments",rid+"_"+sid),{round:rid,sid,status:st,at:serverTimestamp()});
 function bindMO(){
   const on=(sel,ev,fn)=>document.querySelectorAll(sel).forEach(e=>e.addEventListener(ev,fn));
   on("[data-m]","click",e=>{S.moTab=e.target.dataset.m;render()});
+  on("[data-mf]","click",e=>{S.mf=e.target.dataset.mf;render()});
   on("#rsel","change",e=>{S.roundId=e.target.value;render()});
   on("#ms","input",e=>{S.msearch=e.target.value;render();const i=$("#ms");i.focus();i.setSelectionRange(99,99)});
   on("[data-claim]","click",guard(async e=>{await setPay(S.roundId,e.target.dataset.claim,"pending");toast("ส่งแล้ว รอผู้แก้ไขอนุมัติ ⏳")}));
@@ -296,8 +351,9 @@ function bindMO(){
   on("#s-add","click",guard(async()=>{const i=$("#s-id").value.trim();if(!i) return toast("ใส่เลขประจำตัว");await addS(i,$("#s-n").value.trim(),$("#s-f").value.trim());["s-id","s-n","s-f"].forEach(x=>$("#"+x).value="")}));
   on("#s-bulkgo","click",guard(async()=>{for(const l of $("#s-bulk").value.split("\n")){const [i,n,...f]=l.split(",").map(x=>x.trim());if(i) await addS(i,n||"",f.join(" "))}toast("เพิ่มสมาชิกแล้ว")}));
   on("[data-sdel]","click",guard(e=>{e.preventDefault();return confirm("ลบสมาชิกคนนี้?")&&deleteDoc(doc(db,"students",e.target.dataset.sdel))}));
-  on("#r-add","click",guard(async()=>{const n=$("#r-n").value.trim(),a=Number($("#r-a").value),d=$("#r-d").value;if(!n||!a||!d) return toast("กรอกให้ครบ");
-    await addDoc(collection(db,"rounds"),{title:n,amount:a,due:d})}));
+  on("#r-add","click",guard(async()=>{const n=$("#r-n").value.trim(),a=Number($("#r-a").value),d=$("#r-d").value,b=$("#r-s").value||d;if(!n||!a||!d) return toast("กรอกชื่อรอบ จำนวนเงิน และวันหมดเขต");
+    if(b>d) return toast("วันเริ่มต้องไม่หลังวันหมดเขต");
+    await addDoc(collection(db,"rounds"),{title:n,amount:a,start:b,due:d})}));
   on("[data-rdel]","click",guard(e=>confirm("ลบรอบนี้?")&&deleteDoc(doc(db,"rounds",e.target.dataset.rdel))));
 }
 
@@ -314,7 +370,7 @@ function viewCA(){
   let g=DN.map((d,i)=>`<div class="dh w${i}" style="--c:${DAYC[i]}">${d.slice(0,3)}.</div>`).join("");
   for(let i=0;i<cells;i++){
     const d=new Date(y,m,1-off+i),s=iso(d),w=d.getDay(),evs=evOn(s),hol=w===0||w===6||evs.some(e=>e.type==="holiday"),hw=S.hw.filter(h=>h.due===s).length;
-    g+=`<div class="cd w${w} ${hol?"hol":""} ${s===t?"td":""} ${d.getMonth()!==m?"far":""}" style="--c:${DAYC[w]}" tabindex="0" role="button" data-day="${s}" aria-label="${s}">
+    g+=`<div class="cd w${w} ${hol?"hol":""} ${evs.some(e=>e.type!=="holiday")?"gold":""} ${s===t?"td":""} ${d.getMonth()!==m?"far":""}" style="--c:${DAYC[w]}" tabindex="0" role="button" data-day="${s}" aria-label="${s}">
      <span class="n">${d.getDate()}</span>${hol?'<span class="off">หยุด</span>':""}${evs.map(e=>`<span class="ev ${e.type==="holiday"?"h":""}">${esc(e.title)}</span>`).join("")}${hw?`<span class="hwd">📚${hw}</span>`:""}</div>`;
   }
   const up=S.ev.filter(e=>(e.end||e.start)>=t).slice(0,8);
