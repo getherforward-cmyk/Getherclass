@@ -192,7 +192,7 @@ function studentLogin(){
     if(!s) return $("#lg-err").textContent=S.students.length?"ไม่พบเลขประจำตัว "+id+" — ให้ผู้แก้ไขเพิ่มชื่อก่อน":"ยังโหลดรายชื่อไม่ได้ ลองรีเฟรชหน้าเว็บ";
     S.student={sid:String(s.sid),nick:s.nick,name:s.name};localStorage.setItem("gc_student",JSON.stringify(S.student));
     closeModal();render();checkReminder(true)};
-  $("#go").onclick=go;$("#sid").onkeydown=e=>e.key==="Enter"&&go();$("#cl").onclick=closeModal;setTimeout(()=>$("#sid").focus(),50);
+  $("#go").onclick=go;$("#sid").onkeydown=e=>{if(e.key==="Enter")go()};$("#cl").onclick=closeModal;setTimeout(()=>$("#sid").focus(),50);
 }
 function modal(h){$("#mbox").innerHTML=h;$("#modal").classList.add("show")}
 function adminModal(){
@@ -272,7 +272,7 @@ function hwModal(id){
 function bindHW(){
   $("#q")?.addEventListener("input",e=>{S.q=e.target.value;render();const i=$("#q");i.focus();i.setSelectionRange(99,99)});
   document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.f=b.dataset.f;render()});
-  document.querySelectorAll("[data-hw]").forEach(c=>{c.onclick=()=>hwModal(c.dataset.hw);c.onkeydown=e=>e.key==="Enter"&&hwModal(c.dataset.hw)});
+  document.querySelectorAll("[data-hw]").forEach(c=>{c.onclick=()=>hwModal(c.dataset.hw);c.onkeydown=e=>{if(e.key==="Enter")hwModal(c.dataset.hw)}});
   $("#h-new")?.addEventListener("click",()=>hwForm(null));
 }
 
@@ -397,7 +397,7 @@ function dayModal(s){
 function bindCA(){
   const mv=n=>{S.cm=new Date(S.cm.getFullYear(),S.cm.getMonth()+n,1);render()};
   $("#c-p").onclick=()=>mv(-1);$("#c-n").onclick=()=>mv(1);$("#c-t").onclick=()=>{S.cm=new Date();render()};
-  document.querySelectorAll("[data-day]").forEach(c=>{c.onclick=()=>dayModal(c.dataset.day);c.onkeydown=e=>e.key==="Enter"&&dayModal(c.dataset.day)});
+  document.querySelectorAll("[data-day]").forEach(c=>{c.onclick=()=>dayModal(c.dataset.day);c.onkeydown=e=>{if(e.key==="Enter")dayModal(c.dataset.day)}});
   $("#e-add")?.addEventListener("click",guard(async()=>{const n=$("#e-n").value.trim(),a=$("#e-s").value,b=$("#e-e").value||a;
     if(!n||!a) return toast("กรอกชื่อและวันเริ่ม");if(b<a) return toast("วันสิ้นสุดต้องไม่ก่อนวันเริ่ม");
     await addDoc(collection(db,"events"),{type:$("#e-t").value,title:n,start:a,end:b,detail:$("#e-d").value.trim()});toast("บันทึกแล้ว ✅")}));
