@@ -97,6 +97,8 @@ button{white-space:nowrap}
 .prog{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
 .prog>div{height:100%;background:linear-gradient(90deg,var(--green),#7af0b0);border-radius:99px;transition:width .4s}
 @media(max-width:560px){.hw{flex-wrap:wrap}.hw .grow{flex:1 1 calc(100% - 60px)}.hw .side{flex-direction:row;align-items:center;justify-content:space-between;width:100%}}
+
+.mem[data-debt]{cursor:pointer}.big{font-size:1.9rem!important}
 </style>
 </head>
 <body>
@@ -116,7 +118,7 @@ button{white-space:nowrap}
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {getFirestore,collection,doc,setDoc,addDoc,deleteDoc,onSnapshot,getDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {getFirestore,collection,doc,setDoc,addDoc,deleteDoc,onSnapshot,getDoc,writeBatch,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== 1) วาง firebaseConfig ของคุณตรงนี้ ====== */
 const firebaseConfig = {
@@ -129,7 +131,7 @@ const firebaseConfig = {
 };
 
 const fb = initializeApp(firebaseConfig), auth = getAuth(fb), db = getFirestore(fb);
-const S = {tab:"hw",mf:"all",ev:[],cm:new Date(), user:null, student:JSON.parse(localStorage.getItem("gc_student")||"null"),
+const S = {tab:"hw",debts:[],mf:"all",ev:[],cm:new Date(), user:null, student:JSON.parse(localStorage.getItem("gc_student")||"null"),
   hw:[], students:[], rounds:[], pays:[], ledger:[], q:"", f:"all", moTab:"status", roundId:"", msearch:""};
 const $ = s => document.querySelector(s);
 $("#fav").href=$("#logo").src;
@@ -144,7 +146,8 @@ const guard = fn => async (...a)=>{try{await fn(...a)}catch(e){toast("ทำไ�
 /* ---------- realtime data ---------- */
 const sub = (name,key,ord) => onSnapshot(collection(db,name),snap=>{
   S[key]=snap.docs.map(d=>({id:d.id,...d.data()})).sort(ord||(()=>0));
-  if(key==="pays"||key==="rounds"||key==="students") checkReminder();
+  if(["pays","rounds","students","debts"].includes(key)) checkReminder();
+  if(S.debtOpen&&["debts","pays","rounds","students"].includes(key)) debtModal(S.debtOpen);
   render();
 },e=>toast("อ่านข้อมูลไม่ได้: "+e.code));
 sub("homework","hw",(a,b)=>(a.due||"").localeCompare(b.due||""));
@@ -152,6 +155,7 @@ sub("students","students",(a,b)=>(a.sid||"").localeCompare(b.sid||""));
 sub("rounds","rounds",(a,b)=>(a.due||"").localeCompare(b.due||""));
 onSnapshot(doc(db,"settings","site"),d=>{const l=d.data()?.logo;if(l){$("#logo").src=l;$("#fav").href=l}});
 sub("events","ev",(a,b)=>(a.start||"").localeCompare(b.start||""));
+sub("debts","debts",(a,b)=>(a.date||"").localeCompare(b.date||""));
 sub("payments","pays"); sub("ledger","ledger",(a,b)=>(b.date||"").localeCompare(a.date||""));
 let unAdm=null;
 onAuthStateChanged(auth,async u=>{S.user=u;S.isAdmin=false;
@@ -221,21 +225,21 @@ function adminModal(){
     await setDoc(doc(db,"admins",e),{addedBy:me,at:serverTimestamp()});toast("เพิ่มผู้แก้ไขแล้ว ✅")});
   document.querySelectorAll("[data-adel]").forEach(b=>b.onclick=guard(async()=>{if(confirm("ลบสิทธิ์ของ "+b.dataset.adel+" ?"))await deleteDoc(doc(db,"admins",b.dataset.adel))}));
 }
-function closeModal(){S.admOpen=false;$("#modal").classList.remove("show")}
+function closeModal(){S.admOpen=false;S.debtOpen=null;$("#modal").classList.remove("show")}
 
 /* ---------- reminder mascot ---------- */
 let shown=false;
 const rs=r=>r.start||r.due;
 function owed(sid){return S.rounds.filter(r=>rs(r)&&new Date(rs(r)+"T00:00")<=today()&&!S.pays.find(p=>p.id===r.id+"_"+sid&&p.status==="paid"))}
 function checkReminder(force){
-  if(!S.student||(shown&&!force)||!S.rounds.length) return;
-  const o=owed(S.student.sid);if(!o.length) return;
-  shown=true;const sum=o.reduce((a,r)=>a+Number(r.amount||0),0);
+  if(!S.student||(shown&&!force)||(!S.rounds.length&&!S.debts.length)) return;
+  const o=owedOf(S.student.sid);if(!o.total) return;
+  shown=true;const names=[...o.rounds.filter(x=>x.k!=="pending").map(x=>esc(x.r.title)),...(o.debts.length?["ยอดพิเศษ"]:[])];
   modal(`<div class="mascot">🥺🐱</div><h3>${esc(S.student.nick||S.student.name)} ยังค้างเงินห้องอยู่นะ</h3>
-  <p>${o.map(r=>esc(r.title)).join(", ")}<br><b>รวม ${baht(sum)}</b></p>
-  <p class="meta">จ่ายแล้วกด “ฉันจ่ายแล้ว” ในหน้าเงินห้อง รอผู้แก้ไขอนุมัติ</p>
-  <button class="pri" id="gm">ไปจ่ายเลย</button> <button id="cl">เดี๋ยวก่อน</button>`);
-  $("#gm").onclick=()=>{closeModal();S.tab="mo";render()};$("#cl").onclick=closeModal;
+  <p>${names.join(", ")}<br><b>รวม ${baht(o.total)}</b></p>
+  <p class="meta">จ่ายแล้วกด “ฉันจ่ายแล้ว” ในหน้าเงินห้อง หรือจ่ายทีเดียวกับผู้แก้ไข</p>
+  <button class="pri" id="gm">ดูยอดค้าง</button> <button id="cl">เดี๋ยวก่อน</button>`);
+  $("#gm").onclick=()=>{closeModal();S.tab="mo";S.moTab="debt";render()};$("#cl").onclick=closeModal;
 }
 
 /* ---------- homework ---------- */
@@ -309,8 +313,8 @@ const payOf=(r,s)=>S.pays.find(p=>p.id===r+"_"+s)?.status||"none";
 function viewMO(){
   const inc=S.ledger.filter(l=>l.type==="in").reduce((a,l)=>a+Number(l.amount),0), exp=S.ledger.filter(l=>l.type==="out").reduce((a,l)=>a+Number(l.amount),0);
   let h=`<h2>💰 เงินห้อง</h2><div class="card sum"><div>รายรับ<b class="ok">${baht(inc)}</b></div><div>รายจ่าย<b class="bad">${baht(exp)}</b></div><div>คงเหลือ<b>${baht(inc-exp)}</b></div></div>
-  <div class="row" style="margin-bottom:12px"><button class="chip ${S.moTab==="status"?"on":""}" data-m="status">สถานะการชำระ</button><button class="chip ${S.moTab==="ledger"?"on":""}" data-m="ledger">รายรับ-รายจ่าย</button>${isEd()?`<button class="chip ${S.moTab==="admin"?"on":""}" data-m="admin">⚙️ จัดการ</button>`:""}</div>`;
-  if(S.moTab==="status") h+=viewStatus(); else if(S.moTab==="ledger") h+=viewLedger(); else h+=viewAdmin();
+  <div class="row" style="margin-bottom:12px"><button class="chip ${S.moTab==="status"?"on":""}" data-m="status">สถานะการชำระ</button><button class="chip ${S.moTab==="debt"?"on":""}" data-m="debt">💸 ยอดค้างรวม</button><button class="chip ${S.moTab==="ledger"?"on":""}" data-m="ledger">รายรับ-รายจ่าย</button>${isEd()?`<button class="chip ${S.moTab==="admin"?"on":""}" data-m="admin">⚙️ จัดการ</button>`:""}</div>`;
+  if(S.moTab==="status") h+=viewStatus(); else if(S.moTab==="debt") h+=viewDebt(); else if(S.moTab==="ledger") h+=viewLedger(); else h+=viewAdmin();
   return h;
 }
 function rstate(r,st){
@@ -369,7 +373,7 @@ function bindMO(){
   on("[data-claim]","click",guard(async e=>{await setPay(S.roundId,e.target.dataset.claim,"pending");toast("ส่งแล้ว รอผู้แก้ไขอนุมัติ ⏳")}));
   on("[data-ok]","click",guard(e=>setPay(S.roundId,e.target.dataset.ok,"paid")));
   on("[data-undo]","click",guard(e=>deleteDoc(doc(db,"payments",S.roundId+"_"+e.target.dataset.undo))));
-  on("#r-inc","click",guard(async()=>{const r=S.rounds.find(x=>x.id===S.roundId);const n=S.students.filter(s=>payOf(r.id,s.sid)==="paid").length;
+  on("#r-inc","click",guard(async()=>{const r=S.rounds.find(x=>x.id===S.roundId);const n=S.students.filter(s=>payOf(r.id,s.sid)==="paid"&&!S.pays.find(p=>p.id===r.id+"_"+s.sid)?.ledgered).length;
     if(!n) return toast("ยังไม่มีใครจ่าย");if(!confirm(`เพิ่มรายรับ ${n*r.amount} บาท จาก "${r.title}" ?`)) return;
     await setDoc(doc(db,"ledger","round_"+r.id),{type:"in",name:"เงินห้อง "+r.title+` (${n} คน)`,amount:n*r.amount,date:new Date().toISOString().slice(0,10),round:r.id});toast("เพิ่มเป็นรายรับแล้ว (กดซ้ำจะอัปเดตยอดเดิม)")}));
   on("#l-add","click",guard(async()=>{const n=$("#l-n").value.trim(),a=Number($("#l-a").value);if(!n||!a) return toast("กรอกรายการและจำนวนเงิน");
@@ -378,6 +382,8 @@ function bindMO(){
   const addS=(sid,nick,name)=>setDoc(doc(db,"students",sid),{sid,nick,name});
   on("#s-add","click",guard(async()=>{const i=$("#s-id").value.trim();if(!i) return toast("ใส่เลขประจำตัว");await addS(i,$("#s-n").value.trim(),$("#s-f").value.trim());["s-id","s-n","s-f"].forEach(x=>$("#"+x).value="")}));
   on("#s-bulkgo","click",guard(async()=>{for(const l of $("#s-bulk").value.split("\n")){const p=parseStu(l);if(p&&p.sid) await addS(p.sid,p.nick,p.name)}$("#s-bulk").value="";toast("เพิ่มสมาชิกแล้ว")}));
+  on("[data-debt]","click",e=>debtModal(e.currentTarget.dataset.debt));
+  on("[data-debt]","keydown",e=>{if(e.key==="Enter")debtModal(e.currentTarget.dataset.debt)});
   on("[data-sedit]","click",e=>{e.preventDefault();studentEdit(e.currentTarget.dataset.sedit)});
   on("[data-sdel]","click",guard(e=>{e.preventDefault();return confirm("ลบสมาชิกคนนี้?")&&deleteDoc(doc(db,"students",e.target.dataset.sdel))}));
   on("#r-add","click",guard(async()=>{const n=$("#r-n").value.trim(),a=Number($("#r-a").value),d=$("#r-d").value,b=$("#r-s").value||d;if(!n||!a||!d) return toast("กรอกชื่อรอบ จำนวนเงิน และวันหมดเขต");
@@ -447,6 +453,47 @@ function studentEdit(id){
    <div class="row" style="justify-content:center;margin-top:12px"><button class="pri" id="se-ok">บันทึก</button><button id="cl">ยกเลิก</button></div></div>`);
   $("#cl").onclick=closeModal;
   $("#se-ok").onclick=guard(async()=>{await setDoc(doc(db,"students",s.id),{sid:s.sid,nick:$("#se-n").value.trim(),name:$("#se-f").value.trim()});closeModal();toast("บันทึกแล้ว ✅")});
+}
+
+/* ---------- debts ---------- */
+function owedOf(sid){
+  const rounds=S.rounds.map(r=>({r,k:rstate(r,payOf(r.id,sid))})).filter(x=>x.k==="due"||x.k==="late"||x.k==="pending");
+  const debts=S.debts.filter(d=>d.sid===String(sid)&&!d.paid),sum=a=>a.reduce((t,x)=>t+Number(x||0),0);
+  return {rounds,debts,total:sum(rounds.filter(x=>x.k!=="pending").map(x=>x.r.amount))+sum(debts.map(d=>d.amount)),pend:sum(rounds.filter(x=>x.k==="pending").map(x=>x.r.amount))};
+}
+function viewDebt(){
+  const ms=S.msearch.toLowerCase(),rows=S.students.map(s=>({s,o:owedOf(s.sid)}));
+  const tot=rows.reduce((a,x)=>a+x.o.total,0),ppl=rows.filter(x=>x.o.total>0).length,mine=S.student&&rows.find(x=>String(x.s.sid)===String(S.student.sid));
+  const list=rows.filter(x=>!ms||[x.s.sid,x.s.nick,x.s.name].some(v=>String(v||"").toLowerCase().includes(ms))).sort((a,b)=>b.o.total-a.o.total||String(a.s.sid).localeCompare(String(b.s.sid)));
+  return `${mine?`<div class="card mem ${mine.o.total?"due":"paid"}" data-debt="${mine.s.sid}" tabindex="0" role="button"><div class="mp"><div class="meta">ยอดค้างของฉัน</div><div class="nm big">${mine.o.total?baht(mine.o.total):"🎉 ไม่มียอดค้าง"}</div><div class="meta">แตะเพื่อดูว่าค้างรอบไหนบ้าง</div></div></div>`:""}
+  <div class="card sum"><div>ยอดค้างรวมทั้งห้อง<b class="bad">${baht(tot)}</b></div><div>คนที่ค้าง<b>${ppl} คน</b></div></div>
+  <div class="card"><div class="row"><input id="ms" class="grow" placeholder="🔍 ชื่อเล่น / ชื่อจริง / รหัส" value="${esc(S.msearch)}"></div><p class="meta" style="margin:8px 0 0">แตะที่ชื่อเพื่อดูรายละเอียดรอบที่ค้าง${isEd()?" · เพิ่มยอดค้าง / รับชำระทั้งหมด":""}</p></div>
+  ${list.map(({s,o})=>{const nm=[...o.rounds.filter(x=>x.k!=="pending").map(x=>esc(x.r.title)),...(o.debts.length?["ยอดพิเศษ"]:[])];
+   return `<div class="mem ${o.total?"due":"paid"}" data-debt="${s.sid}" tabindex="0" role="button"><div class="mp"><div class="nm">${esc(s.nick||s.name)}</div><div class="meta">${esc(s.name)} · รหัส ${esc(s.sid)}</div>${nm.length?`<div class="meta">ค้าง: ${nm.join(", ")}</div>`:""}</div><span class="st">${o.total?baht(o.total):"✅ ไม่ค้าง"}</span></div>`}).join("")||'<div class="card meta">ไม่พบสมาชิก</div>'}`;
+}
+function debtModal(sid){
+  const s=S.students.find(x=>String(x.sid)===String(sid));if(!s) return;S.debtOpen=sid;const o=owedOf(sid);
+  const row=(t,sub,amt,extra="")=>`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="grow">${t}<br><span class="meta">${sub}</span></span><b>${baht(amt)}</b>${extra}</div>`;
+  modal(`<div class="det"><h3>💰 ยอดค้าง — ${esc(s.nick||s.name)}</h3><p class="meta">${esc(s.name)} · รหัส ${esc(s.sid)}</p>
+   <div class="card sum"><div>ค้างรวม<b class="${o.total?"bad":"ok"}">${baht(o.total)}</b></div>${o.pend?`<div>รออนุมัติ<b class="wait">${baht(o.pend)}</b></div>`:""}</div>
+   ${o.rounds.map(x=>row("📅 "+esc(x.r.title),"หมดเขต "+fmt(x.r.due)+(x.k==="late"?" · 🚨 เกินกำหนด":"")+(x.k==="pending"?" · ⏳ รออนุมัติ (ยังไม่รวมในยอดค้าง)":""),x.r.amount)).join("")}
+   ${o.debts.map(d=>row("📝 "+esc(d.note||"ยอดค้างพิเศษ"),"เพิ่มเมื่อ "+fmt(d.date),d.amount,isEd()?`<button class="sm dng" data-ddel="${d.id}">ลบ</button>`:"")).join("")}
+   ${!o.rounds.length&&!o.debts.length?'<p class="ok">🎉 ไม่มียอดค้าง</p>':""}
+   ${isEd()?`<div class="card" style="margin-top:12px"><b>➕ เพิ่มยอดค้างพิเศษ</b><div class="row" style="margin-top:6px"><input id="d-a" type="number" min="1" placeholder="บาท" style="width:100px"><input id="d-n" class="grow" placeholder="เหตุผล เช่น ค้างค่าเสื้อ"><button class="sm pri" id="d-add">เพิ่ม</button></div></div>
+    <div style="text-align:center;margin-top:10px"><button class="pri" id="d-pay" ${o.total?"":"disabled"}>💵 รับชำระทั้งหมด ${baht(o.total)}</button><p class="meta">ล้างทุกรอบที่ค้าง + ยอดพิเศษ และบันทึกเป็นรายรับครั้งเดียว</p></div>`:""}
+   <div style="text-align:center;margin-top:8px"><button id="cl">ปิด</button></div></div>`);
+  $("#cl").onclick=closeModal;
+  $("#d-add")?.addEventListener("click",guard(async()=>{const a=Number($("#d-a").value);if(!(a>0)) return toast("ใส่จำนวนเงิน");
+    await addDoc(collection(db,"debts"),{sid:String(s.sid),amount:a,note:$("#d-n").value.trim(),date:iso(new Date()),paid:false});toast("เพิ่มยอดค้างแล้ว")}));
+  document.querySelectorAll("[data-ddel]").forEach(b=>b.onclick=guard(async()=>{if(confirm("ลบยอดค้างนี้?"))await deleteDoc(doc(db,"debts",b.dataset.ddel))}));
+  $("#d-pay")?.addEventListener("click",guard(async()=>{
+    const due=o.rounds.filter(x=>x.k!=="pending");if(!o.total) return;
+    if(!confirm(`รับชำระ ${baht(o.total)} จาก ${s.nick||s.name} (${due.length} รอบ${o.debts.length?` + ยอดพิเศษ ${o.debts.length} รายการ`:""}) และบันทึกเป็นรายรับ?`)) return;
+    const b=writeBatch(db);
+    due.forEach(x=>b.set(doc(db,"payments",x.r.id+"_"+s.sid),{round:x.r.id,sid:String(s.sid),status:"paid",ledgered:true,at:serverTimestamp()}));
+    o.debts.forEach(d=>b.update(doc(db,"debts",d.id),{paid:true,paidAt:serverTimestamp()}));
+    b.set(doc(collection(db,"ledger")),{type:"in",name:`ชำระยอดค้างรวม ${s.nick||s.name} (${due.length} รอบ${o.debts.length?` + ยอดพิเศษ ${o.debts.length}`:""})`,amount:o.total,date:iso(new Date())});
+    await b.commit();toast("รับชำระและบันทึกรายรับแล้ว ✅");}));
 }
 
 /* ---------- render ---------- */
