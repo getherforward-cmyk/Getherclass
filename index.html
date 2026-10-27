@@ -489,9 +489,11 @@ function bindHW(){
 const payOf=(r,s)=>S.pays.find(p=>p.id===r+"_"+s)?.status||"none";
 function viewMO(){
   const inc=S.ledger.filter(l=>l.type==="in").reduce((a,l)=>a+Number(l.amount),0), exp=S.ledger.filter(l=>l.type==="out").reduce((a,l)=>a+Number(l.amount),0);
-  let h=`<h2>💰 เงินห้อง</h2><div class="card sum"><div>รายรับ<b class="ok">${baht(inc)}</b></div><div>รายจ่าย<b class="bad">${baht(exp)}</b></div><div>คงเหลือ<b>${baht(inc-exp)}</b></div></div>
-  <div class="row" style="margin-bottom:12px"><button class="chip ${S.moTab==="status"?"on":""}" data-m="status">สถานะการชำระ</button><button class="chip ${S.moTab==="debt"?"on":""}" data-m="debt">💸 ยอดค้างรวม</button><button class="chip ${S.moTab==="ledger"?"on":""}" data-m="ledger">รายรับ-รายจ่าย</button>${isEd()?`<button class="chip ${S.moTab==="admin"?"on":""}" data-m="admin">⚙️ จัดการ</button>`:""}</div>`;
-  if(S.moTab==="status") h+=viewStatus(); else if(S.moTab==="debt") h+=viewDebt(); else if(S.moTab==="ledger") h+=viewLedger(); else h+=viewAdmin();
+  let h=`<h2>💰 เงินห้อง</h2>`;
+  if(isEd()) h+=`<div class="card sum"><div>รายรับ<b class="ok">${baht(inc)}</b></div><div>รายจ่าย<b class="bad">${baht(exp)}</b></div><div>คงเหลือ<b>${baht(inc-exp)}</b></div></div>`;
+  else if(S.student){const own=owedOf(S.student.sid);h+=`<div class="card sum"><div>ยอดค้างของฉัน<b class="${own.total?"bad":"ok"}">${baht(own.total)}</b></div><div>รออนุมัติ<b>${baht(own.pend)}</b></div><div>สถานะ<b>${own.total?"มีรายการค้าง":"ไม่มียอดค้าง"}</b></div></div>`;}
+  h+=`<div class="row" style="margin-bottom:12px"><button class="chip ${S.moTab==="status"?"on":""}" data-m="status">สถานะการชำระ</button><button class="chip ${S.moTab==="debt"?"on":""}" data-m="debt">${isEd()?"💸 ยอดค้างรวม":"💸 ยอดค้างของฉัน"}</button>${isEd()?`<button class="chip ${S.moTab==="ledger"?"on":""}" data-m="ledger">รายรับ-รายจ่าย</button><button class="chip ${S.moTab==="admin"?"on":""}" data-m="admin">⚙️ จัดการ</button>`:""}</div>`;
+  if(S.moTab==="status") h+=viewStatus(); else if(S.moTab==="debt") h+=viewDebt(); else if(isEd()&&S.moTab==="ledger") h+=viewLedger(); else if(isEd()) h+=viewAdmin();
   return h;
 }
 function rstate(r,st){
@@ -510,16 +512,16 @@ function viewStatus(){
   if(!S.rounds.length) return `<div class="card meta">ยังไม่มีรอบเก็บเงิน</div>`;
   if(!S.roundId||!S.rounds.find(r=>r.id===S.roundId)) S.roundId=[...S.rounds].reverse().find(r=>status(r.due).o>0)?.id||S.rounds[S.rounds.length-1].id;
   const r=S.rounds.find(x=>x.id===S.roundId), ms=S.msearch.toLowerCase(), ord={late:0,due:1,pending:2,wait:3,paid:4};
-  const all=S.students.map(s=>({s,k:rstate(r,payOf(r.id,s.sid))}));
+  const all=S.students.filter(s=>isEd()||String(s.sid)===String(S.student?.sid)).map(s=>({s,k:rstate(r,payOf(r.id,s.sid))}));
   const paid=all.filter(x=>x.k==="paid"), unpaid=all.filter(x=>x.k==="due"||x.k==="late");
-  const rows=all.filter(x=>(!ms||[x.s.sid,x.s.nick,x.s.name].some(v=>String(v||"").toLowerCase().includes(ms)))&&(S.mf==="all"||(S.mf==="unpaid"&&x.k!=="paid")||(S.mf==="paid"&&x.k==="paid"))).sort((a,b)=>ord[a.k]-ord[b.k]);
+  const rows=all.filter(x=>(isEd()?(!ms||[x.s.sid,x.s.nick,x.s.name].some(v=>String(v||"").toLowerCase().includes(ms))):true)&&(isEd()?(S.mf==="all"||(S.mf==="unpaid"&&x.k!=="paid")||(S.mf==="paid"&&x.k==="paid")):true)).sort((a,b)=>ord[a.k]-ord[b.k]);
   const lab={paid:"✅ จ่ายแล้ว",pending:"⏳ รออนุมัติ",wait:"🕒 ยังไม่ถึงรอบ",due:"❌ ยังไม่จ่าย",late:"🚨 เกินกำหนด"};
   return `<div class="card"><select id="rsel" style="width:100%">${S.rounds.map(x=>`<option value="${x.id}" ${x.id===r.id?"selected":""}>${esc(x.title)} · ${baht(x.amount)}</option>`).join("")}</select>
    <p style="margin:8px 0 0"><b>${esc(r.title)}</b> · ${baht(r.amount)}/คน<br><span class="meta">เริ่มชำระ ${fmt(rs(r))} · หมดเขต <b>${fmt(r.due)}</b></span> <span class="chip">${roundInfo(r)}</span></p>
    <div class="sum" style="margin-top:10px"><div>เก็บได้แล้ว<b class="ok">${baht(paid.length*r.amount)}</b>${paid.length} คน</div><div>ยังไม่จ่าย<b class="bad">${unpaid.length} คน</b>${baht(unpaid.length*r.amount)}</div></div>
    ${isEd()?`<p><button class="sm pri" id="r-inc">เพิ่มยอดที่เก็บได้เป็นรายรับ</button></p>`:""}</div>
-  <div class="card"><div class="row"><input id="ms" class="grow" placeholder="🔍 ชื่อเล่น / ชื่อจริง / รหัส" value="${esc(S.msearch)}"></div>
-   <div class="row" style="margin-top:8px">${[["all","ทั้งหมด"],["unpaid","ยังไม่จ่าย"],["paid","จ่ายแล้ว"]].map(([k,l])=>`<button class="chip ${S.mf===k?"on":""}" data-mf="${k}">${l}</button>`).join("")}</div></div>
+  ${isEd()?`<div class="card"><div class="row"><input id="ms" class="grow" placeholder="🔍 ชื่อเล่น / ชื่อจริง / รหัส" value="${esc(S.msearch)}"></div>
+   <div class="row" style="margin-top:8px">${[["all","ทั้งหมด"],["unpaid","ยังไม่จ่าย"],["paid","จ่ายแล้ว"]].map(([k,l])=>`<button class="chip ${S.mf===k?"on":""}" data-mf="${k}">${l}</button>`).join("")}</div></div>`:""}
   ${rows.map(({s,k})=>{const me=S.student?.sid===String(s.sid);
    return `<div class="mem ${k}"><div class="mp"><div class="nm">${esc(s.nick||s.name)}${me?" (คุณ)":""}</div><div class="meta">${esc(s.name)} · รหัส ${esc(s.sid)}</div></div><span class="st">${lab[k]}</span>
    ${me&&k!=="paid"&&k!=="pending"?`<button class="sm pri" data-claim="${s.sid}">ฉันจ่ายแล้ว</button>`:""}
@@ -639,12 +641,12 @@ function owedOf(sid){
   return {rounds,debts,total:sum(rounds.filter(x=>x.k!=="pending").map(x=>x.r.amount))+sum(debts.map(d=>d.amount)),pend:sum(rounds.filter(x=>x.k==="pending").map(x=>x.r.amount))};
 }
 function viewDebt(){
-  const ms=S.msearch.toLowerCase(),rows=S.students.map(s=>({s,o:owedOf(s.sid)}));
+  const ms=S.msearch.toLowerCase(),rows=S.students.filter(s=>isEd()||String(s.sid)===String(S.student?.sid)).map(s=>({s,o:owedOf(s.sid)}));
   const tot=rows.reduce((a,x)=>a+x.o.total,0),ppl=rows.filter(x=>x.o.total>0).length,mine=S.student&&rows.find(x=>String(x.s.sid)===String(S.student.sid));
-  const list=rows.filter(x=>!ms||[x.s.sid,x.s.nick,x.s.name].some(v=>String(v||"").toLowerCase().includes(ms))).sort((a,b)=>b.o.total-a.o.total||String(a.s.sid).localeCompare(String(b.s.sid)));
+  const list=rows.filter(x=>isEd()?(!ms||[x.s.sid,x.s.nick,x.s.name].some(v=>String(v||"").toLowerCase().includes(ms))):true).sort((a,b)=>b.o.total-a.o.total||String(a.s.sid).localeCompare(String(b.s.sid)));
   return `${mine?`<div class="card mem ${mine.o.total?"due":"paid"}" data-debt="${mine.s.sid}" tabindex="0" role="button"><span class="hm">${mascot(mine.o.total?"sad":"cheer",76)}</span><div class="mp"><div class="meta">ยอดค้างของฉัน</div><div class="nm big">${mine.o.total?baht(mine.o.total):"🎉 ไม่มียอดค้าง"}</div><div class="meta">แตะเพื่อดูว่าค้างรอบไหนบ้าง</div></div></div>`:""}
-  <div class="card sum"><div>ยอดค้างรวมทั้งห้อง<b class="bad">${baht(tot)}</b></div><div>คนที่ค้าง<b>${ppl} คน</b></div></div>
-  <div class="card"><div class="row"><input id="ms" class="grow" placeholder="🔍 ชื่อเล่น / ชื่อจริง / รหัส" value="${esc(S.msearch)}"></div><p class="meta" style="margin:8px 0 0">แตะที่ชื่อเพื่อดูรายละเอียดรอบที่ค้าง${isEd()?" · เพิ่มยอดค้าง / รับชำระทั้งหมด":""}</p></div>
+  ${isEd()?`<div class="card sum"><div>ยอดค้างรวมทั้งห้อง<b class="bad">${baht(tot)}</b></div><div>คนที่ค้าง<b>${ppl} คน</b></div></div>`:""}
+  <div class="card">${isEd()?`<div class="row"><input id="ms" class="grow" placeholder="🔍 ชื่อเล่น / ชื่อจริง / รหัส" value="${esc(S.msearch)}"></div>`:""}<p class="meta" style="margin:8px 0 0">${isEd()?"แตะที่ชื่อเพื่อดูรายละเอียดรอบที่ค้าง · เพิ่มยอดค้าง / รับชำระทั้งหมด":"แสดงเฉพาะยอดค้างของคุณ"}</p></div>
   ${list.map(({s,o})=>{const nm=[...o.rounds.filter(x=>x.k!=="pending").map(x=>esc(x.r.title)),...(o.debts.length?["ยอดพิเศษ"]:[])];
    return `<div class="mem ${o.total?"due":"paid"}" data-debt="${s.sid}" tabindex="0" role="button"><div class="mp"><div class="nm">${esc(s.nick||s.name)}</div><div class="meta">${esc(s.name)} · รหัส ${esc(s.sid)}</div>${nm.length?`<div class="meta">ค้าง: ${nm.join(", ")}</div>`:""}</div><span class="st">${o.total?baht(o.total):"✅ ไม่ค้าง"}</span></div>`}).join("")||'<div class="card meta">ไม่พบสมาชิก</div>'}`;
 }
@@ -733,9 +735,10 @@ function viewDashboard(){
 /* ---------- render ---------- */
 function render(){
   const a=document.activeElement?.id;
-  $("#t-mo").classList.toggle("hide",!isEd());
-  $("#t-mo").setAttribute("aria-hidden",String(!isEd()));
-  if(!isEd() && S.tab==="mo") S.tab="dash";
+  const canSeeMoney=isEd()||!!S.student;
+  $("#t-mo").classList.toggle("hide",!canSeeMoney);
+  $("#t-mo").setAttribute("aria-hidden",String(!canSeeMoney));
+  if(!canSeeMoney && S.tab==="mo") S.tab="dash";
   ["dash","hw","ca","mo"].forEach(k=>$("#t-"+k).classList.toggle("on",S.tab===k));
   renderWho();
   $("#app").classList.toggle("enter",S._lt!==S.tab);S._lt=S.tab;
@@ -749,7 +752,7 @@ function bindDashboard(){
   ["dash-stat-money","dash-money-link"].forEach(id=>$("#"+id)?.addEventListener("click",()=>go("mo")));
 }
 $("#theme-toggle").onclick=()=>{const next=document.documentElement.classList.contains("dark")?"light":"dark";applyTheme(next);try{localStorage.setItem(themeKey,next)}catch(e){}};
-$("#t-dash").onclick=()=>{S.tab="dash";render()};$("#t-hw").onclick=()=>{S.tab="hw";render()};$("#t-ca").onclick=()=>{S.tab="ca";render()};$("#t-mo").onclick=()=>{if(!isEd()){toast("เงินห้องสำหรับผู้ดูแลที่ได้รับสิทธิ์เท่านั้น");return}S.tab="mo";render()};
+$("#t-dash").onclick=()=>{S.tab="dash";render()};$("#t-hw").onclick=()=>{S.tab="hw";render()};$("#t-ca").onclick=()=>{S.tab="ca";render()};$("#t-mo").onclick=()=>{if(!isEd()&&!S.student){toast("กรุณาเข้าสู่ระบบนักเรียนก่อน");return}if(!isEd())S.moTab="status";S.tab="mo";render()};
 $("#ft").innerHTML=mascot("happy",54)+"<span>Getherclass · ห้องเรียนของเรา</span>";
 render();
 </script>
