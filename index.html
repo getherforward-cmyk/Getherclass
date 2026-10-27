@@ -333,13 +333,14 @@ function uploadLogo(f){
 function studentLogin(){
   modal(`<div class="mascot">${mascot("happy",120)}</div><h3>เข้าสู่ระบบนักเรียน</h3><p class="meta">ใส่เลขประจำตัวนักเรียน</p>
   <input id="sid" inputmode="numeric" autocomplete="off" placeholder="เช่น 12345" style="width:100%"><p id="lg-err" class="bad" style="min-height:1.5em"></p>
+  <p class="meta" style="font-size:.85em">เข้าสู่ระบบเพื่อแยกความคืบหน้าการบ้านในอุปกรณ์นี้ ไม่ใช้เลขประจำตัวเพื่อเปิดข้อมูลส่วนตัวหรือการเงิน</p>
   <button class="pri" id="go">เข้าสู่ระบบ</button> <button id="cl">ยกเลิก</button>`);
   const go=()=>{const id=$("#sid").value.trim().replace(/[๐-๙]/g,c=>c.charCodeAt(0)-3664).replace(/\s+/g,"");
     if(!id) return $("#lg-err").textContent="กรอกเลขประจำตัวก่อน";
-    const s=S.students.find(x=>String(x.sid).trim()===id||x.id===id);
-    if(!s) return $("#lg-err").textContent=S.students.length?"ไม่พบเลขประจำตัว "+id+" — ให้ผู้แก้ไขเพิ่มชื่อก่อน":"ยังโหลดรายชื่อไม่ได้ ลองรีเฟรชหน้าเว็บ";
-    S.student={sid:String(s.sid),nick:s.nick,name:s.name};localStorage.setItem("gc_student",JSON.stringify(S.student));
-    closeModal();render();checkReminder(true)};
+    if(!/^[0-9]+$/.test(id)) return $("#lg-err").textContent="กรุณากรอกเลขประจำตัวเป็นตัวเลข";
+    // Student ID is a local profile label only. Do not query or expose the private students collection.
+    S.student={sid:id,nick:"นักเรียน "+id,name:""};localStorage.setItem("gc_student",JSON.stringify(S.student));
+    closeModal();render();};
   $("#go").onclick=go;$("#sid").onkeydown=e=>{if(e.key==="Enter")go()};$("#cl").onclick=closeModal;setTimeout(()=>$("#sid").focus(),50);
 }
 function modal(h){$("#mbox").innerHTML=h;$("#modal").classList.add("show")}
