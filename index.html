@@ -277,14 +277,15 @@ publicClassUnsubs.push(sub("students","students",(a,b)=>(a.sid||"").localeCompar
 publicClassUnsubs.push(sub("rounds","rounds",(a,b)=>(a.due||"").localeCompare(b.due||"")));
 publicClassUnsubs.push(sub("debts","debts",(a,b)=>(a.date||"").localeCompare(b.date||"")));
 publicClassUnsubs.push(sub("payments","pays"));
+// Read aggregate source data for the classroom balance (the student UI only shows the total).
+publicClassUnsubs.push(sub("ledger","ledger",(a,b)=>(b.date||"").localeCompare(a.date||"")));
 let privateUnsubs=[];
-function clearPrivateData(){privateUnsubs.forEach(u=>u());privateUnsubs=[];S.ledger=[];S.admins=[];}
+function clearPrivateData(){privateUnsubs.forEach(u=>u());privateUnsubs=[];S.admins=[];}
 onAuthStateChanged(auth,async u=>{S.user=u;S.isAdmin=false;
   if(u && u.email){try{S.isAdmin=(await getDoc(doc(db,"admins",u.email.toLowerCase()))).exists()}catch(e){S.isAdmin=false;}}
   if(unAdm){unAdm();unAdm=null;}
   clearPrivateData();
   if(S.isAdmin){
-    privateUnsubs.push(sub("ledger","ledger",(a,b)=>(b.date||"").localeCompare(a.date||"")));
     unAdm=onSnapshot(collection(db,"admins"),sn=>{S.admins=sn.docs.map(d=>d.id).sort();if(S.admOpen)adminModal()},e=>toast("อ่านรายชื่อผู้ดูแลไม่ได้: "+e.code));
   }
   if(S.isAdmin && S.coursesLoaded && !S.courses.length) seedDefaultCourses();
@@ -490,8 +491,8 @@ const payOf=(r,s)=>S.pays.find(p=>p.id===r+"_"+s)?.status||"none";
 function viewMO(){
   const inc=S.ledger.filter(l=>l.type==="in").reduce((a,l)=>a+Number(l.amount),0), exp=S.ledger.filter(l=>l.type==="out").reduce((a,l)=>a+Number(l.amount),0);
   let h=`<h2>💰 เงินห้อง</h2>`;
-  if(isEd()) h+=`<div class="card sum"><div>รายรับ<b class="ok">${baht(inc)}</b></div><div>รายจ่าย<b class="bad">${baht(exp)}</b></div><div>คงเหลือ<b>${baht(inc-exp)}</b></div></div>`;
-  else if(S.student){const own=owedOf(S.student.sid);h+=`<div class="card sum"><div>ยอดค้างของฉัน<b class="${own.total?"bad":"ok"}">${baht(own.total)}</b></div><div>รออนุมัติ<b>${baht(own.pend)}</b></div><div>สถานะ<b>${own.total?"มีรายการค้าง":"ไม่มียอดค้าง"}</b></div></div>`;}
+  if(isEd()) h+=`<div class="card sum"><div>รายรับ<b class="ok">${baht(inc)}</b></div><div>รายจ่าย<b class="bad">${baht(exp)}</b></div><div>เงินห้องคงเหลือ<b>${baht(inc-exp)}</b></div></div>`;
+  else if(S.student){const own=owedOf(S.student.sid);h+=`<div class="card sum"><div>💰 เงินห้องคงเหลือ<b>${baht(inc-exp)}</b></div><div>ยอดค้างของฉัน<b class="${own.total?"bad":"ok"}">${baht(own.total)}</b></div><div>รออนุมัติ<b>${baht(own.pend)}</b></div></div>`;}
   h+=`<div class="row" style="margin-bottom:12px"><button class="chip ${S.moTab==="status"?"on":""}" data-m="status">สถานะการชำระ</button><button class="chip ${S.moTab==="debt"?"on":""}" data-m="debt">${isEd()?"💸 ยอดค้างรวม":"💸 ยอดค้างของฉัน"}</button>${isEd()?`<button class="chip ${S.moTab==="ledger"?"on":""}" data-m="ledger">รายรับ-รายจ่าย</button><button class="chip ${S.moTab==="admin"?"on":""}" data-m="admin">⚙️ จัดการ</button>`:""}</div>`;
   if(S.moTab==="status") h+=viewStatus(); else if(S.moTab==="debt") h+=viewDebt(); else if(isEd()&&S.moTab==="ledger") h+=viewLedger(); else if(isEd()) h+=viewAdmin();
   return h;
