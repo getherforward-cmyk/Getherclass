@@ -287,32 +287,46 @@ function viewHW(){
   ${all.length?`<div class="meta" style="margin-top:10px">ทำเสร็จแล้ว <b>${nd}/${all.length}</b> ชิ้น${S.student?"":" (บันทึกในเครื่องนี้ — เข้าด้วยเลขประจำตัวเพื่อแยกของแต่ละคน)"}</div><div class="prog"><div style="width:${pc}%"></div></div>`:""}</div>`;
   h+=list.length?list.map(x=>`<div class="card hw ${x.done?"fin":x.st.k} ${x.pinned&&!x.done?"pin":""}" data-hw="${x.id}" tabindex="0" role="button">
    <button class="ck ${x.done?"on":""}" data-ck="${x.id}" aria-pressed="${x.done}" aria-label="ทำเสร็จแล้ว">${x.done?"✓":""}</button>
-   <div class="grow"><h3>${x.pinned?'<span class="pinb">📌 สำคัญ</span>':""}${esc(x.subject)} – ${esc(x.title)}</h3>
+   <div class="grow"><h3>${x.pinned?'<span class="pinb">📌 สำคัญ</span>':""}${x.courseCode?`<span class="meta">${esc(x.courseCode)} · </span>`:""}${esc(x.subject)} – ${esc(x.title)}</h3>
    <div class="meta">👩‍🏫 ${esc(x.teacher||"-")} · สั่ง ${fmt(x.assigned)} · ส่ง <b>${fmt(x.due)}</b>${links(x).length?` · 📎 ${links(x).length} ไฟล์`:""}</div>
    <div class="meta">แตะเพื่อดูรายละเอียด</div></div>
    <div class="side"><span class="tag">${x.done?"✅ เสร็จแล้ว":x.st.t}</span>${isEd()?`<button class="sm" data-pin="${x.id}">${x.pinned?"📍 เลิกปักหมุด":"📌 ปักหมุด"}</button>`:""}</div></div>`).join("")
    :`<div class="card meta">ยังไม่มีการบ้านที่ตรงกับการค้นหา 🎉</div>`;
   return h;
 }
+const DEFAULT_COURSES = [
+ {code:"จ31226",teacher:"ครูภรภัทร"},{code:"อ31225",teacher:"ครูภาวิดา"},{code:"อ31223",teacher:"ครู Anastasi"},{code:"ค31102",teacher:"ครูทัศน์พล"},
+ {code:"ค้นคว้า",teacher:"ครูพิณทิพย์ / ครูภาวิดา"},{code:"ท31102",teacher:"ครูจิรวรรธ"},{code:"อ31102",teacher:"ครูยุรี"},{code:"ศ31102",teacher:"ครูทรงพล"},
+ {code:"พ31102",teacher:"ครูภัทรวดี"},{code:"ว31271",teacher:"ครูศิวสว์"},{code:"อ31222",teacher:"ครูยุรี"},{code:"ส31104",teacher:"ครูธนิดา"},
+ {code:"ส31103",teacher:"ครูปีนัทธา"},{code:"ง31102",teacher:"ครูปรียากร"},{code:"ก.รักอ่าน (รักการอ่าน)",teacher:"ครูสมฤทัย"},{code:"ว31102",teacher:"ครูณัฐกานต์"},{code:"อ31224",teacher:"ครูภาวิดา"}
+];
+const courseList=()=>{try{const saved=JSON.parse(localStorage.getItem("gc_courses")||"null");return Array.isArray(saved)&&saved.length?saved:DEFAULT_COURSES.map(x=>({...x,subject:""}))}catch{return DEFAULT_COURSES.map(x=>({...x,subject:""}))}};
 function hwForm(h){
-  const v=k=>esc(h?.[k]||"");
-  modal(`<div class="det"><h3>${h?"✏️ แก้ไขการบ้าน":"➕ เพิ่มการบ้าน"}</h3><div class="grid">
-   <label>วิชา<input id="h-sub" value="${v("subject")}"></label><label>ชื่อเรื่อง<input id="h-title" value="${v("title")}"></label><label>ชื่ออาจารย์<input id="h-t" value="${v("teacher")}"></label>
+  const v=k=>esc(h?.[k]||""); const courses=courseList();
+  const opts=courses.map((c,i)=>`<option value="${i}" ${h?.courseCode===c.code?"selected":""}>${esc(c.code)} · ${esc(c.subject||"ชื่อวิชายังไม่ตั้งชื่อ")} — ${esc(c.teacher)}</option>`).join("");
+  modal(`<div class="det"><h3>${h?"✏️ แก้ไขการบ้าน":"➕ เพิ่มการบ้าน"}</h3>
+   <div style="background:linear-gradient(135deg,#17386f,#2a58a8);color:white;padding:14px;border-radius:16px;margin:10px 0"><b>⚡ เลือกวิชาด่วน</b><p style="margin:2px 0 8px;font-size:.88rem">เลือกเลขวิชา ระบบจะเติมเลขวิชาและชื่อครูให้ แก้ไขได้ทุกช่อง</p><select id="h-preset" style="width:100%;background:white;color:#12294f"><option value="">— เลือกวิชา —</option>${opts}</select></div>
+   <div class="grid">
+   <label>เลขวิชา<input id="h-code" value="${v("courseCode")}" placeholder="เช่น อ31225"></label><label>ชื่อวิชา (แก้ไขได้)<input id="h-sub" value="${v("subject")}" placeholder="กรอกชื่อวิชาจริง"></label><label>ชื่อครู<input id="h-t" value="${v("teacher")}" placeholder="ชื่ออาจารย์"></label><label>ชื่อเรื่องการบ้าน<input id="h-title" value="${v("title")}"></label>
    <label>วันที่สั่ง<input type="date" id="h-a" value="${h?.assigned||iso(new Date())}"></label><label>วันที่ส่ง<input type="date" id="h-d" value="${v("due")}"></label></div>
+   <div class="row" style="margin-top:10px"><button id="h-save-course" class="sm">💾 บันทึกข้อมูลวิชาเป็นค่าเริ่มต้น</button></div><p class="meta" style="margin:4px 0">บันทึกไว้ในเครื่องนี้ เพื่อให้แก้ชื่อวิชา/ครูของรายการนั้นได้ในครั้งต่อไป</p>
    <label class="meta" style="display:block;margin-top:8px">ลิงก์ Google Drive รูป/ไฟล์ (หลายไฟล์: 1 บรรทัดต่อ 1 ลิงก์)<textarea id="h-l" placeholder="https://drive.google.com/file/d/...">${v("link")}</textarea></label>
    <label class="meta" style="display:block;margin-top:8px">รายละเอียด<textarea id="h-det">${v("detail")}</textarea></label>
-   <div class="row" style="justify-content:center;margin-top:12px"><button class="pri" id="h-save">บันทึก</button><button id="cl">ยกเลิก</button></div></div>`);
+   <div class="row" style="justify-content:center;margin-top:12px"><button class="pri" id="h-save">บันทึกการบ้าน</button><button id="cl">ยกเลิก</button></div></div>`);
+  const preset=$("#h-preset");
+  preset.onchange=()=>{const c=courses[Number(preset.value)];if(!c)return;$("#h-code").value=c.code||"";$("#h-sub").value=c.subject||"";$("#h-t").value=c.teacher||""};
+  $("#h-save-course").onclick=()=>{const code=$("#h-code").value.trim();if(!code)return toast("กรอกเลขวิชาก่อน");const idx=courses.findIndex(c=>c.code===code);const data={code,subject:$("#h-sub").value.trim(),teacher:$("#h-t").value.trim()};if(idx>=0)courses[idx]=data;else courses.push(data);localStorage.setItem("gc_courses",JSON.stringify(courses));toast("บันทึกข้อมูลวิชาเริ่มต้นแล้ว ✅")};
   $("#cl").onclick=closeModal;
   $("#h-save").onclick=guard(async()=>{const g=i=>$("#"+i).value.trim();
-    if(!g("h-sub")||!g("h-title")||!g("h-d")) return toast("กรอก วิชา เรื่อง และวันที่ส่งก่อน");
-    const d={subject:g("h-sub"),title:g("h-title"),teacher:g("h-t"),assigned:g("h-a"),due:g("h-d"),link:g("h-l"),detail:g("h-det")};
+    if(!g("h-sub")||!g("h-title")||!g("h-d")) return toast("กรอกชื่อวิชา เรื่อง และวันที่ส่งก่อน");
+    const d={subject:g("h-sub"),courseCode:g("h-code"),title:g("h-title"),teacher:g("h-t"),assigned:g("h-a"),due:g("h-d"),link:g("h-l"),detail:g("h-det")};
     if(h) await setDoc(doc(db,"homework",h.id),d,{merge:true}); else await addDoc(collection(db,"homework"),{...d,at:serverTimestamp()});
     closeModal();toast("บันทึกแล้ว ✅")});
 }
 function hwModal(id){
   const h=S.hw.find(x=>x.id===id);if(!h) return;const st=status(h.due),dn=isDone(h.id);
   modal(`<div class="det"><div class="${st.k}"><span class="chip" style="background:var(--c);color:${["y","o"].includes(st.k)?"#1b2a4a":"#fff"};box-shadow:0 0 12px var(--c);border:0;font-weight:700">${st.t}</span></div>
-   <h3>${esc(h.subject)} – ${esc(h.title)}</h3>
+   <h3>${h.courseCode?`<span class="meta">${esc(h.courseCode)} · </span>`:""}${esc(h.subject)} – ${esc(h.title)}</h3>
    <p class="meta">👩‍🏫 ${esc(h.teacher||"-")}<br>📆 สั่ง ${fmt(h.assigned)} · ส่ง <b>${fmt(h.due)}</b></p>
    ${h.detail?`<p>${esc(h.detail).replace(/\n/g,"<br>")}</p>`:'<p class="meta">ไม่มีรายละเอียดเพิ่มเติม</p>'}
    ${links(h).map((u,i)=>{const d=driveId(u);return `<div class="card">${d?`<img src="https://drive.google.com/thumbnail?id=${d}&sz=w1000" alt="ไฟล์ ${i+1}" loading="lazy" onerror="this.remove()" style="max-width:100%;border-radius:12px;display:block;margin-bottom:8px">`:""}
