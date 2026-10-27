@@ -270,23 +270,21 @@ const sub = (name,key,ord) => onSnapshot(collection(db,name),snap=>{
 sub("homework","hw",(a,b)=>(a.due||"").localeCompare(b.due||""));
 sub("events","ev",(a,b)=>(a.start||"").localeCompare(b.start||""));
 onSnapshot(doc(db,"settings","site"),d=>{const l=d.data()?.logo;if(l){$("#logo").src=l;$("#fav").href=l}},e=>console.warn("Public settings unavailable",e.code));
-// Private collections are subscribed to ONLY after Firebase verifies admin access.
-let unAdm=null, privateUnsubs=[];
-function clearPrivateData(){privateUnsubs.forEach(u=>u());privateUnsubs=[];S.students=[];S.rounds=[];S.debts=[];S.pays=[];S.ledger=[];S.admins=[];}
-function startPrivateData(){
-  clearPrivateData(); if(!isEd()) return;
-  privateUnsubs.push(sub("students","students",(a,b)=>(a.sid||"").localeCompare(b.sid||"")));
-  privateUnsubs.push(sub("rounds","rounds",(a,b)=>(a.due||"").localeCompare(b.due||"")));
-  privateUnsubs.push(sub("debts","debts",(a,b)=>(a.date||"").localeCompare(b.date||"")));
-  privateUnsubs.push(sub("payments","pays"));
-  privateUnsubs.push(sub("ledger","ledger",(a,b)=>(b.date||"").localeCompare(a.date||"")));
-}
+// Keep the existing classroom workflow: student profiles and room-payment status
+// are loaded for the current UI; writes remain restricted by Firestore Rules.
+let unAdm=null, publicClassUnsubs=[];
+publicClassUnsubs.push(sub("students","students",(a,b)=>(a.sid||"").localeCompare(b.sid||"")));
+publicClassUnsubs.push(sub("rounds","rounds",(a,b)=>(a.due||"").localeCompare(b.due||"")));
+publicClassUnsubs.push(sub("debts","debts",(a,b)=>(a.date||"").localeCompare(b.date||"")));
+publicClassUnsubs.push(sub("payments","pays"));
+let privateUnsubs=[];
+function clearPrivateData(){privateUnsubs.forEach(u=>u());privateUnsubs=[];S.ledger=[];S.admins=[];}
 onAuthStateChanged(auth,async u=>{S.user=u;S.isAdmin=false;
   if(u && u.email){try{S.isAdmin=(await getDoc(doc(db,"admins",u.email.toLowerCase()))).exists()}catch(e){S.isAdmin=false;}}
   if(unAdm){unAdm();unAdm=null;}
   clearPrivateData();
   if(S.isAdmin){
-    startPrivateData();
+    privateUnsubs.push(sub("ledger","ledger",(a,b)=>(b.date||"").localeCompare(a.date||"")));
     unAdm=onSnapshot(collection(db,"admins"),sn=>{S.admins=sn.docs.map(d=>d.id).sort();if(S.admOpen)adminModal()},e=>toast("อ่านรายชื่อผู้ดูแลไม่ได้: "+e.code));
   }
   if(S.isAdmin && S.coursesLoaded && !S.courses.length) seedDefaultCourses();
@@ -333,14 +331,16 @@ function uploadLogo(f){
 function studentLogin(){
   modal(`<div class="mascot">${mascot("happy",120)}</div><h3>เข้าสู่ระบบนักเรียน</h3><p class="meta">ใส่เลขประจำตัวนักเรียน</p>
   <input id="sid" inputmode="numeric" autocomplete="off" placeholder="เช่น 12345" style="width:100%"><p id="lg-err" class="bad" style="min-height:1.5em"></p>
-  <p class="meta" style="font-size:.85em">เข้าสู่ระบบเพื่อแยกความคืบหน้าการบ้านในอุปกรณ์นี้ ไม่ใช้เลขประจำตัวเพื่อเปิดข้อมูลส่วนตัวหรือการเงิน</p>
   <button class="pri" id="go">เข้าสู่ระบบ</button> <button id="cl">ยกเลิก</button>`);
-  const go=()=>{const id=$("#sid").value.trim().replace(/[๐-๙]/g,c=>c.charCodeAt(0)-3664).replace(/\s+/g,"");
+  const go=guard(async()=>{const id=$("#sid").value.trim().replace(/[๐-๙]/g,c=>c.charCodeAt(0)-3664).replace(/\s+/g,"");
     if(!id) return $("#lg-err").textContent="กรอกเลขประจำตัวก่อน";
     if(!/^[0-9]+$/.test(id)) return $("#lg-err").textContent="กรุณากรอกเลขประจำตัวเป็นตัวเลข";
-    // Student ID is a local profile label only. Do not query or expose the private students collection.
-    S.student={sid:id,nick:"นักเรียน "+id,name:""};localStorage.setItem("gc_student",JSON.stringify(S.student));
-    closeModal();render();};
+    if(!S.students.length) return $("#lg-err").textContent="ยังโหลดรายชื่อไม่ได้ ลองรีเฟรชหน้าเว็บ";
+    const st=S.students.find(x=>String(x.sid).trim()===id||String(x.id)===id);
+    if(!st) return $("#lg-err").textContent="ไม่พบเลขประจำตัว "+id+" — ให้ผู้แก้ไขตรวจสอบรายชื่อนักเรียน";
+    S.student={sid:String(st.sid),nick:st.nick||"",name:st.name||""};
+    localStorage.setItem("gc_student",JSON.stringify(S.student));closeModal();render();
+  });
   $("#go").onclick=go;$("#sid").onkeydown=e=>{if(e.key==="Enter")go()};$("#cl").onclick=closeModal;setTimeout(()=>$("#sid").focus(),50);
 }
 function modal(h){$("#mbox").innerHTML=h;$("#modal").classList.add("show")}
