@@ -413,7 +413,7 @@ function closeModal(){S.admOpen=false;S.debtOpen=null;$("#modal").classList.remo
 /* ---------- reminder mascot ---------- */
 let shown=false;
 const rs=r=>r.start||r.due;
-function owed(sid){return S.rounds.filter(r=>rs(r)&&new Date(rs(r)+"T00:00")<=today()&&!S.pays.find(p=>p.id===r.id+"_"+sid&&p.status==="paid"))}
+function owed(sid){return S.rounds.filter(r=>rs(r)&&new Date(rs(r)+"T00:00")<=today()&&payOf(r.id,sid)!=="paid")}
 function checkReminder(force){
   if(!S.student||(shown&&!force)||(!S.rounds.length&&!S.debts.length)) return;
   const o=owedOf(S.student.sid);if(!o.total) return;
@@ -538,7 +538,18 @@ function bindHW(){
 }
 
 /* ---------- money ---------- */
-const payOf=(r,s)=>S.pays.find(p=>p.id===r+"_"+s)?.status||"none";
+// Resolve payments using the current document ID or legacy stored fields.
+const payOf=(r,s)=>{
+  const rid=String(r??"").trim(), sid=String(s??"").trim();
+  const rec=S.pays.find(p=>String(p.id??"").trim()===rid+"_"+sid ||
+    (String(p.round??p.roundId??"").trim()===rid && String(p.sid??p.studentId??"").trim()===sid));
+  if(!rec) return "none";
+  if(rec.paid===true || rec.isPaid===true) return "paid";
+  const st=String(rec.status??"").trim().toLowerCase();
+  if(["paid","approved","complete","completed","success","จ่ายแล้ว","ชำระแล้ว","อนุมัติแล้ว"].includes(st)) return "paid";
+  if(["pending","รออนุมัติ","รอตรวจสอบ","แจ้งชำระแล้ว"].includes(st)) return "pending";
+  return st || "none";
+};
 function viewMO(){
   const inc=S.ledger.filter(l=>l.type==="in").reduce((a,l)=>a+Number(l.amount),0), exp=S.ledger.filter(l=>l.type==="out").reduce((a,l)=>a+Number(l.amount),0);
   let h=`<h2>💰 เงินห้อง</h2>`;
